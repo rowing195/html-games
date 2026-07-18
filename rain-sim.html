@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>雨夜模擬器</title>
+<style>
+  :root {
+    --ink: #dfe7f2;
+    --ink-dim: #8b98ab;
+    --panel: rgba(12, 17, 26, 0.86);
+    --panel-edge: rgba(148, 178, 218, 0.16);
+    --accent: #8fd0ff;
+    --accent-dim: rgba(143, 208, 255, 0.35);
+    --track: rgba(148, 178, 218, 0.22);
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: #06090f;
+    color: var(--ink);
+    font-family: "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
+    overflow: hidden;
+  }
+  #scene {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+
+  .brand {
+    position: fixed;
+    top: 18px;
+    left: 20px;
+    user-select: none;
+    pointer-events: none;
+  }
+  .brand h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.35em;
+    color: var(--ink);
+    text-shadow: 0 1px 8px rgba(0,0,0,.8);
+  }
+  .brand p {
+    margin: 4px 0 0;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: var(--ink-dim);
+  }
+
+  .panel {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    width: 268px;
+    max-height: calc(100vh - 32px);
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 10px;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 40px rgba(0,0,0,.55);
+    transition: transform .35s cubic-bezier(.2,.8,.2,1), opacity .3s;
+  }
+  .panel.hidden {
+    transform: translateX(calc(100% + 24px));
+    opacity: 0;
+    pointer-events: none;
+  }
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--panel-edge);
+  }
+  .panel-head strong {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    color: var(--ink);
+  }
+  .panel-body {
+    overflow-y: auto;
+    padding: 12px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 13px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--track) transparent;
+  }
+
+  .presets {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+  .presets button, .icon-btn, .toggle-row button {
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--ink);
+    background: rgba(148, 178, 218, 0.08);
+    border: 1px solid var(--panel-edge);
+    border-radius: 6px;
+    padding: 6px 2px;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .presets button:hover { background: rgba(148,178,218,.16); }
+  .presets button.on {
+    background: rgba(143,208,255,.14);
+    border-color: var(--accent-dim);
+    color: var(--accent);
+  }
+  button:focus-visible, input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .ctl { display: block; }
+  .ctl-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 5px;
+  }
+  .ctl-head span {
+    font-size: 12px;
+    color: var(--ink);
+    letter-spacing: 0.08em;
+  }
+  .ctl-head output {
+    font-family: ui-monospace, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+    color: var(--accent);
+  }
+  input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 18px;
+    background: transparent;
+    cursor: pointer;
+    margin: 0;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 2px;
+    background: var(--track);
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 13px;
+    height: 13px;
+    margin-top: -5px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+    box-shadow: 0 0 8px rgba(143,208,255,.5);
+  }
+  input[type=range]::-moz-range-track {
+    height: 3px;
+    border-radius: 2px;
+    background: var(--track);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+    box-shadow: 0 0 8px rgba(143,208,255,.5);
+  }
+
+  .toggle-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding-top: 2px;
+  }
+  .toggle-row button { padding: 7px 4px; }
+  .toggle-row button.on {
+    background: rgba(143,208,255,.14);
+    border-color: var(--accent-dim);
+    color: var(--accent);
+  }
+
+  .icon-btn {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 5;
+    width: 38px;
+    height: 34px;
+    padding: 0;
+    font-size: 15px;
+    background: var(--panel);
+    backdrop-filter: blur(14px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .icon-btn.show { display: flex; }
+  .panel-close {
+    background: none;
+    border: none;
+    color: var(--ink-dim);
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 4px;
+    line-height: 1;
+  }
+  .panel-close:hover { color: var(--ink); }
+
+  .hint {
+    position: fixed;
+    bottom: 14px;
+    left: 20px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--ink-dim);
+    user-select: none;
+    pointer-events: none;
+    text-shadow: 0 1px 6px rgba(0,0,0,.8);
+  }
+
+  @media (max-width: 560px) {
+    .panel { width: calc(100vw - 32px); }
+    .brand h1 { font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+
+<canvas id="scene"></canvas>
+
+<div class="brand">
+  <h1>雨　夜</h1>
+  <p>NOCTURNE · RAIN SIMULATOR</p>
+</div>
+
+<button class="icon-btn" id="openPanel" aria-label="開啟控制面板" title="開啟控制面板">☰</button>
+
+<aside class="panel" id="panel" aria-label="模擬參數">
+  <div class="panel-head">
+    <strong>模擬參數</strong>
+    <button class="panel-close" id="closePanel" aria-label="收合面板">✕</button>
+  </div>
+  <div class="panel-body">
+    <div class="presets" id="presets">
+      <button data-preset="drizzle">毛毛雨</button>
+      <button data-preset="rain" class="on">大雨</button>
+      <button data-preset="storm">暴風雨</button>
+      <button data-preset="typhoon">颱風</button>
+    </div>
+
+    <label class="ctl"><div class="ctl-head"><span>雨量</span><output id="o-intensity"></output></div>
+      <input type="range" id="s-intensity" min="60" max="1600" step="10"></label>
+
+    <label class="ctl"><div class="ctl-head"><span>下落速度</span><output id="o-speed"></output></div>
+      <input type="range" id="s-speed" min="0.35" max="2" step="0.01"></label>
+
+    <label class="ctl"><div class="ctl-head"><span>雨絲長度</span><output id="o-len"></output></div>
+      <input type="range" id="s-len" min="0.4" max="2.2" step="0.01"></label>
+
+    <label class="ctl"><div class="ctl-head"><span>風力（← / →）</span><output id="o-wind"></output></div>
+      <input type="range" id="s-wind" min="-100" max="100" step="1"></label>
+
+    <label class="ctl"><div class="ctl-head"><span>陣風強度</span><output id="o-gust"></output></div>
+      <input type="range" id="s-gust" min="0" max="1" step="0.01"></label>
+
+    <label class="ctl"><div class="ctl-head"><span>閃電頻率（次/分）</span><output id="o-bolt"></output></div>
+      <input type="range" id="s-bolt" min="0" max="14" step="0.5"></label>
+
+    <label class="ctl"><div class="ctl-head"><span>濺水強度</span><output id="o-splash"></output></div>
+      <input type="range" id="s-splash" min="0" max="1" step="0.01"></label>
+
+    <label class="ctl"><div class="ctl-head"><span>霧氣濃度</span><output id="o-fog"></output></div>
+      <input type="range" id="s-fog" min="0" max="1" step="0.01"></label>
+
+    <div class="toggle-row">
+      <button id="btnSound">🔇 音效</button>
+      <button id="btnPause">⏸ 暫停</button>
+    </div>
+  </div>
+</aside>
+
+<div class="hint" id="hint">空白鍵暫停 · 點擊天空觸發閃電</div>
+
+<script>
+(() => {
+'use strict';
+
+const canvas = document.getElementById('scene');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1, horizonY = 0, groundBand = 0;
+
+// ---------- 參數 ----------
+const params = {
+  intensity: 750,   // 雨滴總數
+  speed: 1.0,       // 下落速度倍率
+  len: 1.0,         // 雨絲長度倍率
+  wind: 22,         // 基礎風力 -100..100
+  gust: 0.5,        // 陣風強度 0..1
+  bolt: 4,          // 閃電頻率 次/分
+  splash: 0.7,      // 濺水強度 0..1
+  fog: 0.35,        // 霧氣 0..1
+};
+
+const PRESETS = {
+  drizzle: { intensity: 180, speed: 0.55, len: 0.6, wind: 6,  gust: 0.15, bolt: 0,   splash: 0.25, fog: 0.55 },
+  rain:    { intensity: 750, speed: 1.0,  len: 1.0, wind: 22, gust: 0.5,  bolt: 4,   splash: 0.7,  fog: 0.35 },
+  storm:   { intensity: 1200,speed: 1.4,  len: 1.4, wind: 55, gust: 0.8,  bolt: 9,   splash: 0.9,  fog: 0.45 },
+  typhoon: { intensity: 1600,speed: 1.8,  len: 1.9, wind: 92, gust: 1.0,  bolt: 12,  splash: 1.0,  fog: 0.6  },
+};
+
+// ---------- 雨滴（三層視差） ----------
+// 每層：速度、長度、透明度、線寬皆不同，遠處慢而暗、近處快而亮
+const LAYERS = [
+  { share: 0.46, speed: 0.45, len: 0.55, alpha: 0.16, width: 0.8,  landLo: 0.00, landHi: 0.30 },
+  { share: 0.34, speed: 0.75, len: 0.90, alpha: 0.30, width: 1.15, landLo: 0.22, landHi: 0.68 },
+  { share: 0.20, speed: 1.15, len: 1.35, alpha: 0.48, width: 1.7,  landLo: 0.55, landHi: 1.00 },
+];
+let drops = [];       // 依層排序的雨滴池
+let splashes = [];    // 濺水粒子
+let ripples = [];     // 地面漣漪
+let mists = [];       // 霧氣團
+let clouds = [];      // 雲層
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+
+function makeDrop(layerIdx, anywhere) {
+  const L = LAYERS[layerIdx];
+  const landT = L.landLo + Math.pow(Math.random(), 1.4) * (L.landHi - L.landLo);
+  return {
+    layer: layerIdx,
+    x: rand(-W * 0.25, W * 1.25),
+    y: anywhere ? rand(-H * 0.2, H) : rand(-H * 0.3, -10),
+    groundY: horizonY + landT * groundBand,
+    v: rand(0.82, 1.18),          // 個體速度差異
+  };
+}
+
+function rebuildDrops() {
+  drops = [];
+  for (let li = 0; li < LAYERS.length; li++) {
+    const n = Math.round(params.intensity * LAYERS[li].share);
+    for (let i = 0; i < n; i++) drops.push(makeDrop(li, true));
+  }
+}
+
+function syncDropCount() {
+  const targets = LAYERS.map(L => Math.round(params.intensity * L.share));
+  const counts = [0, 0, 0];
+  for (const d of drops) counts[d.layer]++;
+  for (let li = 0; li < 3; li++) {
+    let diff = targets[li] - counts[li];
+    while (diff > 0) { drops.push(makeDrop(li, true)); diff--; }
+    if (diff < 0) {
+      for (let i = drops.length - 1; i >= 0 && diff < 0; i--) {
+        if (drops[i].layer === li) { drops.splice(i, 1); diff++; }
+      }
+    }
+  }
+}
+
+// ---------- 風場：基礎風 + 多頻率陣風 ----------
+function windAt(t) {
+  const g = Math.sin(t * 0.9) * 0.45 + Math.sin(t * 0.23 + 1.7) * 0.35 + Math.sin(t * 2.3 + 4.1) * 0.2;
+  return params.wind + g * params.gust * 65;
+}
+
+// ---------- 閃電 ----------
+let strikes = [];      // { t0, env:[{dt,amp}], bolt:[polyline...], boltLife }
+let lastStrike = -10;
+
+function genBolt(startX) {
+  const lines = [];
+  const walk = (x, y, endY, width, depth) => {
+    const pts = [[x, y]];
+    let px = x, py = y;
+    while (py < endY) {
+      py += rand(H * 0.02, H * 0.05);
+      px += rand(-1, 1) * H * 0.028 + windAt(simT) * 0.12;
+      pts.push([px, py]);
+      if (depth < 2 && Math.random() < 0.16 && py < endY * 0.75) {
+        walk(px, py, py + rand(0.1, 0.3) * (endY - py) + H * 0.05, width * 0.45, depth + 1);
+      }
+    }
+    lines.push({ pts, width });
+  };
+  walk(startX, H * rand(0.02, 0.08), horizonY * rand(0.75, 0.98), rand(2.2, 3.4), 0);
+  return lines;
+}
+
+function triggerStrike(forcedX) {
+  const hasBolt = Math.random() < 0.65 || forcedX !== undefined;
+  strikes.push({
+    t0: simT,
+    env: [
+      { dt: 0,               amp: 1 },
+      { dt: rand(0.1, 0.2),  amp: rand(0.4, 0.8) },
+      { dt: rand(0.25, 0.45),amp: rand(0.2, 0.5) },
+    ],
+    bolt: hasBolt ? genBolt(forcedX !== undefined ? forcedX : rand(W * 0.12, W * 0.88)) : null,
+    boltLife: rand(0.3, 0.5),
+  });
+  lastStrike = simT;
+  if (audio.on) scheduleThunder(rand(0.25, 2.2), hasBolt ? 1 : 0.6);
+}
+
+function flashLevel() {
+  let f = 0;
+  for (const s of strikes) {
+    const t = simT - s.t0;
+    for (const e of s.env) {
+      const lt = t - e.dt;
+      if (lt >= 0) f = Math.max(f, e.amp * Math.exp(-lt * 11));
+    }
+  }
+  return Math.min(1, f);
+}
+
+// ---------- 音效（Web Audio 合成） ----------
+const audio = { on: false, ctx: null, rainGain: null, rainFilter: null };
+
+function initAudio() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ac = new AC();
+  const len = ac.sampleRate * 2;
+  const buf = ac.createBuffer(1, len, ac.sampleRate);
+  const ch = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
+  const src = ac.createBufferSource();
+  src.buffer = buf; src.loop = true;
+  const filter = ac.createBiquadFilter();
+  filter.type = 'lowpass'; filter.frequency.value = 1400; filter.Q.value = 0.4;
+  const gain = ac.createGain();
+  gain.gain.value = 0;
+  src.connect(filter).connect(gain).connect(ac.destination);
+  src.start();
+  audio.ctx = ac; audio.rainGain = gain; audio.rainFilter = filter;
+}
+
+function updateRainSound() {
+  if (!audio.ctx) return;
+  const t = audio.ctx.currentTime;
+  const amt = params.intensity / 1600;
+  const target = audio.on && !paused ? 0.03 + amt * 0.14 * (0.6 + params.speed * 0.4) : 0;
+  audio.rainGain.gain.setTargetAtTime(target, t, 0.4);
+  audio.rainFilter.frequency.setTargetAtTime(500 + amt * 2600, t, 0.4);
+}
+
+function scheduleThunder(delay, power) {
+  const ac = audio.ctx;
+  if (!ac) return;
+  const t0 = ac.currentTime + delay;
+  const dur = rand(1.8, 3.5);
+  const len = Math.ceil(ac.sampleRate * dur);
+  const buf = ac.createBuffer(1, len, ac.sampleRate);
+  const ch = buf.getChannelData(0);
+  let v = 0;
+  for (let i = 0; i < len; i++) {           // 布朗噪音：低頻隆隆聲
+    v += (Math.random() * 2 - 1) * 0.08;
+    v *= 0.985;
+    ch[i] = v;
+  }
+  const src = ac.createBufferSource(); src.buffer = buf;
+  const filter = ac.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(300, t0);
+  filter.frequency.exponentialRampToValueAtTime(70, t0 + dur);
+  const gain = ac.createGain();
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(0.5 * power, t0 + 0.08);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  src.connect(filter).connect(gain).connect(ac.destination);
+  src.start(t0); src.stop(t0 + dur + 0.1);
+}
+
+// ---------- 場景元素初始化 ----------
+function initScenery() {
+  mists = [];
+  for (let i = 0; i < 9; i++) {
+    mists.push({ x: rand(0, W), y: horizonY + rand(-0.1, 0.9) * groundBand,
+                 r: rand(W * 0.1, W * 0.3), a: rand(0.4, 1), drift: rand(0.5, 1.5) });
+  }
+  clouds = [];
+  for (let i = 0; i < 7; i++) {
+    clouds.push({ x: rand(0, W), y: rand(-H * 0.05, H * 0.16),
+                  r: rand(W * 0.12, W * 0.32), a: rand(0.5, 1), drift: rand(0.3, 1) });
+  }
+}
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  horizonY = H * 0.78;
+  groundBand = H - horizonY;
+  rebuildDrops();
+  initScenery();
+}
+
+// ---------- 主迴圈 ----------
+let simT = 0, lastFrame = 0, paused = false;
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function step(dt) {
+  simT += dt;
+  const wind = windAt(simT);
+  const flash = flashLevel();
+
+  // 自動閃電
+  if (params.bolt > 0 && simT - lastStrike > 2.2 && Math.random() < (params.bolt / 60) * dt) {
+    triggerStrike();
+  }
+  strikes = strikes.filter(s => simT - s.t0 < 1.2);
+
+  // 雨滴
+  const spdScale = H / 900;
+  for (const d of drops) {
+    const L = LAYERS[d.layer];
+    const vy = (620 + d.v * 260) * L.speed * params.speed * spdScale;
+    const vx = wind * (2.2 + L.speed * 1.6);
+    d.x += vx * dt;
+    d.y += vy * dt;
+    if (d.x < -W * 0.3) d.x += W * 1.6;
+    else if (d.x > W * 1.3) d.x -= W * 1.6;
+    if (d.y >= d.groundY) {
+      // 落地：近、中層產生濺水
+      if (d.layer > 0 && params.splash > 0 && Math.random() < params.splash * (d.layer === 2 ? 0.75 : 0.3)) {
+        spawnSplash(d.x, d.groundY, d.layer);
+      }
+      d.x = rand(-W * 0.25, W * 1.25);
+      d.y = rand(-H * 0.25, -8);
+      const lt = L.landLo + Math.pow(Math.random(), 1.4) * (L.landHi - L.landLo);
+      d.groundY = horizonY + lt * groundBand;
+    }
+  }
+
+  // 濺水粒子
+  for (let i = splashes.length - 1; i >= 0; i--) {
+    const p = splashes[i];
+    p.vy += 2200 * dt;
+    p.x += (p.vx + wind * 1.2) * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    if (p.life <= 0 || p.y > p.floor + 4) splashes.splice(i, 1);
+  }
+
+  // 漣漪
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const r = ripples[i];
+    r.r += r.grow * dt;
+    r.life -= dt * 2.2;
+    if (r.life <= 0) ripples.splice(i, 1);
+  }
+
+  // 霧與雲隨風漂移
+  for (const m of mists) {
+    m.x += wind * 0.35 * m.drift * dt + 4 * dt;
+    if (m.x - m.r > W) m.x = -m.r; else if (m.x + m.r < 0) m.x = W + m.r;
+  }
+  for (const c of clouds) {
+    c.x += wind * 0.18 * c.drift * dt + 3 * dt;
+    if (c.x - c.r > W) c.x = -c.r; else if (c.x + c.r < 0) c.x = W + c.r;
+  }
+
+  return { wind, flash };
+}
+
+function spawnSplash(x, y, layer) {
+  if (splashes.length > 420) return;
+  const near = layer === 2;
+  const n = Math.round(rand(2, near ? 5 : 3) * (0.5 + params.splash * 0.5));
+  for (let i = 0; i < n; i++) {
+    splashes.push({
+      x, y, floor: y,
+      vx: rand(-70, 70) * (near ? 1 : 0.6),
+      vy: rand(-260, -90) * (near ? 1 : 0.55) * (0.6 + params.speed * 0.4),
+      life: rand(0.25, 0.5),
+      size: near ? rand(1, 1.8) : rand(0.6, 1.1),
+    });
+  }
+  if (ripples.length < 160) {
+    ripples.push({ x, y, r: 1, grow: rand(28, 55) * (near ? 1.4 : 1), life: 1, near });
+  }
+}
+
+// ---------- 繪製 ----------
+function render(wind, flash) {
+  // 夜空
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  const f = flash * 0.5;
+  sky.addColorStop(0, `rgb(${10 + f*70|0}, ${14 + f*80|0}, ${23 + f*100|0})`);
+  sky.addColorStop(0.55, `rgb(${8 + f*50|0}, ${11 + f*58|0}, ${19 + f*76|0})`);
+  sky.addColorStop(1, `rgb(${5 + f*30|0}, ${7 + f*36|0}, ${12 + f*48|0})`);
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  // 雲層（閃電時被照亮）
+  for (const c of clouds) {
+    const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.r);
+    const base = 0.28 * c.a, lit = flash * 0.5 * c.a;
+    g.addColorStop(0, `rgba(${30 + flash*160|0}, ${38 + flash*170|0}, ${58 + flash*190|0}, ${base + lit})`);
+    g.addColorStop(1, 'rgba(10, 14, 24, 0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, c.r, c.r * 0.42, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 閃電本體
+  for (const s of strikes) {
+    if (!s.bolt) continue;
+    const t = simT - s.t0;
+    if (t > s.boltLife) continue;
+    let a = 0;
+    for (const e of s.env) {
+      const lt = t - e.dt;
+      if (lt >= 0) a = Math.max(a, e.amp * Math.exp(-lt * 14));
+    }
+    if (a < 0.02) continue;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = 'rgba(170, 190, 255, 0.9)';
+    ctx.shadowBlur = 26;
+    for (const line of s.bolt) {
+      ctx.beginPath();
+      ctx.moveTo(line.pts[0][0], line.pts[0][1]);
+      for (let i = 1; i < line.pts.length; i++) ctx.lineTo(line.pts[i][0], line.pts[i][1]);
+      ctx.strokeStyle = `rgba(210, 222, 255, ${a * 0.5})`;
+      ctx.lineWidth = line.width * 2.6;
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(250, 252, 255, ${a})`;
+      ctx.lineWidth = line.width;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // 地面：濕潤瀝青 + 閃電反光
+  const gnd = ctx.createLinearGradient(0, horizonY, 0, H);
+  gnd.addColorStop(0, `rgb(${14 + flash*46|0}, ${18 + flash*54|0}, ${27 + flash*70|0})`);
+  gnd.addColorStop(0.4, `rgb(${10 + flash*30|0}, ${13 + flash*36|0}, ${20 + flash*48|0})`);
+  gnd.addColorStop(1, `rgb(${6 + flash*16|0}, ${8 + flash*20|0}, ${13 + flash*28|0})`);
+  ctx.fillStyle = gnd;
+  ctx.fillRect(0, horizonY, W, groundBand + 1);
+  // 地平線微光
+  const sheen = ctx.createLinearGradient(0, horizonY - 1, 0, horizonY + groundBand * 0.5);
+  sheen.addColorStop(0, `rgba(120, 150, 200, ${0.10 + flash * 0.35})`);
+  sheen.addColorStop(1, 'rgba(120, 150, 200, 0)');
+  ctx.fillStyle = sheen;
+  ctx.fillRect(0, horizonY - 1, W, groundBand * 0.5);
+
+  // 雨絲：三層各自批次繪製（單一路徑，效能佳）
+  const spdScale = H / 900;
+  const lightBoost = 1 + flash * 1.6;
+  for (let li = 0; li < LAYERS.length; li++) {
+    const L = LAYERS[li];
+    const vy = 750 * L.speed * params.speed * spdScale;
+    const vx = wind * (2.2 + L.speed * 1.6);
+    const mag = Math.hypot(vx, vy);
+    const len = params.len * L.len * (16 + params.speed * 14) * spdScale;
+    const ux = (vx / mag) * len, uy = (vy / mag) * len;
+    ctx.strokeStyle = `rgba(174, 196, 228, ${Math.min(0.85, L.alpha * lightBoost)})`;
+    ctx.lineWidth = L.width;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const d of drops) {
+      if (d.layer !== li) continue;
+      ctx.moveTo(d.x - ux, d.y - uy);
+      ctx.lineTo(d.x, d.y);
+    }
+    ctx.stroke();
+  }
+
+  // 漣漪
+  ctx.lineWidth = 1;
+  for (const r of ripples) {
+    ctx.strokeStyle = `rgba(180, 200, 230, ${r.life * (r.near ? 0.35 : 0.18) * lightBoost})`;
+    ctx.beginPath();
+    ctx.ellipse(r.x, r.y, r.r, r.r * 0.28, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // 濺水粒子
+  ctx.fillStyle = `rgba(200, 216, 240, ${0.5 * lightBoost > 0.9 ? 0.9 : 0.5 * lightBoost})`;
+  ctx.beginPath();
+  for (const p of splashes) {
+    ctx.moveTo(p.x + p.size, p.y);
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+  }
+  ctx.fill();
+
+  // 霧氣
+  if (params.fog > 0.01) {
+    for (const m of mists) {
+      const g = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.r);
+      g.addColorStop(0, `rgba(105, 125, 158, ${0.055 * params.fog * m.a * (1 + flash)})`);
+      g.addColorStop(1, 'rgba(105, 125, 158, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(m.x, m.y, m.r, m.r * 0.32, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // 全畫面閃光
+  if (flash > 0.01) {
+    ctx.fillStyle = `rgba(190, 205, 250, ${flash * 0.16})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // 暗角
+  const vig = ctx.createRadialGradient(W / 2, H * 0.45, H * 0.35, W / 2, H * 0.5, Math.max(W, H) * 0.75);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.42)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (paused) { lastFrame = now; return; }
+  const dt = Math.min((now - lastFrame) / 1000 || 0.016, 0.033);
+  lastFrame = now;
+  const { wind, flash } = step(dt);
+  render(wind, flash);
+}
+
+// ---------- UI 綁定 ----------
+const FMT = {
+  intensity: v => `${Math.round(v)} 滴`,
+  speed: v => `${(+v).toFixed(2)}×`,
+  len: v => `${(+v).toFixed(2)}×`,
+  wind: v => `${v > 0 ? '→ ' : v < 0 ? '← ' : ''}${Math.abs(Math.round(v))}`,
+  gust: v => `${Math.round(v * 100)}%`,
+  bolt: v => +v === 0 ? '關閉' : (+v).toFixed(1),
+  splash: v => `${Math.round(v * 100)}%`,
+  fog: v => `${Math.round(v * 100)}%`,
+};
+
+const sliders = {};
+for (const key of Object.keys(params)) {
+  const input = document.getElementById('s-' + key);
+  const out = document.getElementById('o-' + key);
+  sliders[key] = { input, out };
+  input.value = params[key];
+  out.textContent = FMT[key](params[key]);
+  input.addEventListener('input', () => {
+    params[key] = +input.value;
+    out.textContent = FMT[key](params[key]);
+    if (key === 'intensity') syncDropCount();
+    if (key === 'intensity' || key === 'speed') updateRainSound();
+    clearPresetHighlight();
+  });
+}
+
+const presetBtns = [...document.querySelectorAll('#presets button')];
+function clearPresetHighlight() { presetBtns.forEach(b => b.classList.remove('on')); }
+presetBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = PRESETS[btn.dataset.preset];
+    Object.assign(params, p);
+    for (const key of Object.keys(p)) {
+      sliders[key].input.value = p[key];
+      sliders[key].out.textContent = FMT[key](p[key]);
+    }
+    syncDropCount();
+    updateRainSound();
+    clearPresetHighlight();
+    btn.classList.add('on');
+  });
+});
+
+// 音效切換
+const btnSound = document.getElementById('btnSound');
+btnSound.addEventListener('click', () => {
+  audio.on = !audio.on;
+  if (audio.on && !audio.ctx) initAudio();
+  if (audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume();
+  btnSound.textContent = audio.on ? '🔊 音效' : '🔇 音效';
+  btnSound.classList.toggle('on', audio.on);
+  updateRainSound();
+});
+
+// 暫停
+const btnPause = document.getElementById('btnPause');
+function setPaused(v) {
+  paused = v;
+  btnPause.textContent = paused ? '▶ 播放' : '⏸ 暫停';
+  btnPause.classList.toggle('on', paused);
+  updateRainSound();
+}
+btnPause.addEventListener('click', () => setPaused(!paused));
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !/INPUT|BUTTON/.test(document.activeElement.tagName)) {
+    e.preventDefault();
+    setPaused(!paused);
+  }
+});
+
+// 面板收合
+const panel = document.getElementById('panel');
+const openBtn = document.getElementById('openPanel');
+document.getElementById('closePanel').addEventListener('click', () => {
+  panel.classList.add('hidden');
+  openBtn.classList.add('show');
+});
+openBtn.addEventListener('click', () => {
+  panel.classList.remove('hidden');
+  openBtn.classList.remove('show');
+});
+
+// 點擊天空手動觸發閃電
+canvas.addEventListener('pointerdown', e => {
+  if (e.clientY < horizonY) triggerStrike(e.clientX);
+});
+
+// ---------- 啟動 ----------
+window.addEventListener('resize', resize);
+resize();
+if (reducedMotion) {
+  setPaused(true);
+  const { wind, flash } = step(0.016);
+  render(wind, flash);
+  document.getElementById('hint').textContent = '偵測到「減少動態」偏好，已暫停 · 按空白鍵或 ▶ 開始';
+}
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>

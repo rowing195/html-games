@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>星夜下的貓</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #04060f; }
+  canvas { display: block; }
+  #hint {
+    position: fixed; left: 18px; bottom: 16px;
+    color: rgba(200, 215, 255, .45);
+    font: 13px/1.5 system-ui, "Microsoft JhengHei", sans-serif;
+    letter-spacing: 1px; pointer-events: none; user-select: none;
+  }
+
+  /* ---------- 控制面板 ---------- */
+  :root {
+    --ink: #dfe7f2;
+    --ink-dim: #8b98ab;
+    --panel: rgba(12, 17, 26, 0.86);
+    --panel-edge: rgba(148, 178, 218, 0.16);
+    --accent: #8fd0ff;
+    --track: rgba(148, 178, 218, 0.22);
+  }
+  .panel {
+    position: fixed; top: 16px; right: 16px;
+    width: 258px; max-height: calc(100vh - 32px);
+    display: flex; flex-direction: column;
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 10px;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 40px rgba(0,0,0,.55);
+    font-family: "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
+    color: var(--ink);
+    transition: transform .35s cubic-bezier(.2,.8,.2,1), opacity .3s;
+    z-index: 10;
+  }
+  .panel.hidden { transform: translateX(calc(100% + 24px)); opacity: 0; pointer-events: none; }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--panel-edge);
+  }
+  .panel-head strong { font-size: 12px; font-weight: 600; letter-spacing: .22em; }
+  .panel-close {
+    background: none; border: none; color: var(--ink-dim);
+    font-size: 15px; cursor: pointer; padding: 2px 4px; line-height: 1;
+  }
+  .panel-close:hover { color: var(--ink); }
+  .panel-body {
+    overflow-y: auto; padding: 10px 14px 14px;
+    display: flex; flex-direction: column; gap: 12px;
+    scrollbar-width: thin; scrollbar-color: var(--track) transparent;
+  }
+  .sec {
+    font-size: 10px; letter-spacing: .28em; color: var(--ink-dim);
+    margin: 4px 0 -5px; user-select: none;
+  }
+  .ctl { display: block; }
+  .ctl-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .ctl-head span { font-size: 12px; letter-spacing: .08em; }
+  .ctl-head output {
+    font-family: ui-monospace, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 11px; color: var(--accent);
+  }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 18px; margin: 0;
+    background: transparent; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: var(--track); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 13px; height: 13px; margin-top: -5px;
+    border-radius: 50%; background: var(--accent); border: none;
+    box-shadow: 0 0 8px rgba(143,208,255,.5);
+  }
+  input[type=range]::-moz-range-track { height: 3px; border-radius: 2px; background: var(--track); }
+  input[type=range]::-moz-range-thumb {
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--accent); border: none;
+    box-shadow: 0 0 8px rgba(143,208,255,.5);
+  }
+  .icon-btn {
+    position: fixed; top: 16px; right: 16px; z-index: 9;
+    width: 38px; height: 34px; padding: 0;
+    display: none; align-items: center; justify-content: center;
+    font-size: 15px; color: var(--ink);
+    background: var(--panel);
+    border: 1px solid var(--panel-edge); border-radius: 8px;
+    backdrop-filter: blur(14px); cursor: pointer;
+  }
+  .icon-btn.show { display: flex; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div id="hint">夜空下，一隻貓與滿天流星 ✦ 右上面板可調視角、星空與風</div>
+
+<button class="icon-btn" id="openPanel" aria-label="開啟控制面板" title="開啟控制面板">☰</button>
+
+<aside class="panel" id="panel" aria-label="場景參數">
+  <div class="panel-head">
+    <strong>場景參數</strong>
+    <button class="panel-close" id="closePanel" aria-label="收合面板">✕</button>
+  </div>
+  <div class="panel-body">
+    <div class="sec">視　角</div>
+    <label class="ctl"><div class="ctl-head"><span>環繞角度</span><output id="o-camAngle"></output></div>
+      <input type="range" id="s-camAngle" min="-180" max="180" step="1"></label>
+    <label class="ctl"><div class="ctl-head"><span>相機高度</span><output id="o-camHeight"></output></div>
+      <input type="range" id="s-camHeight" min="0.4" max="10" step="0.1"></label>
+    <label class="ctl"><div class="ctl-head"><span>相機距離</span><output id="o-camDist"></output></div>
+      <input type="range" id="s-camDist" min="3.5" max="18" step="0.1"></label>
+    <label class="ctl"><div class="ctl-head"><span>仰望高度</span><output id="o-lookY"></output></div>
+      <input type="range" id="s-lookY" min="0" max="12" step="0.1"></label>
+
+    <div class="sec">星　空</div>
+    <label class="ctl"><div class="ctl-head"><span>星星密度</span><output id="o-starDensity"></output></div>
+      <input type="range" id="s-starDensity" min="0" max="1" step="0.01"></label>
+    <label class="ctl"><div class="ctl-head"><span>星星亮度</span><output id="o-starBright"></output></div>
+      <input type="range" id="s-starBright" min="0.2" max="2" step="0.01"></label>
+    <label class="ctl"><div class="ctl-head"><span>閃爍速度</span><output id="o-twinkle"></output></div>
+      <input type="range" id="s-twinkle" min="0" max="3" step="0.05"></label>
+    <label class="ctl"><div class="ctl-head"><span>流星數量</span><output id="o-meteors"></output></div>
+      <input type="range" id="s-meteors" min="0" max="70" step="1"></label>
+
+    <div class="sec">風與落葉</div>
+    <label class="ctl"><div class="ctl-head"><span>風力</span><output id="o-wind"></output></div>
+      <input type="range" id="s-wind" min="0" max="100" step="1"></label>
+  </div>
+</aside>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* ---------- 基礎 ---------- */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.5;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x070b16, 0.008);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1000);
+camera.zoom = 0.6;                    // 0.6x 廣角
+camera.updateProjectionMatrix();
+camera.position.set(6.1, 1.9, 5.1);   // 蹲在貓咪身旁稍遠處的視角
+
+/* ---------- 可調參數 ---------- */
+const params = {
+  camAngle: 50,      // 環繞角度（度）
+  camHeight: 1.9,    // 相機高度
+  camDist: 8,        // 相機距離
+  lookY: 5.4,        // 仰望目標高度
+  starDensity: 1,    // 星星密度 0..1
+  starBright: 1,     // 星星亮度倍率
+  twinkle: 1,        // 閃爍速度倍率
+  meteors: 70,       // 同時存在的流星上限
+  wind: 15,          // 風力 0..100
+};
+
+/* 風場：基礎風力 × 多頻率陣風，回傳當下風強 0..~1.3 */
+const WIND_DIR = new THREE.Vector3(1, 0, 0.35).normalize();
+function windStrength(t) {
+  const w = params.wind / 100;
+  const gust = 0.72 + 0.35 * Math.sin(t * 0.5 + 1.1)
+             + 0.2 * Math.sin(t * 1.7 + 4.2)
+             + 0.1 * Math.sin(t * 3.1);
+  return w * Math.max(0.15, gust);
+}
+
+/* ---------- 天空漸層圓頂 ---------- */
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  depthWrite: false,
+  fog: false,
+  uniforms: {},
+  vertexShader: `
+    varying vec3 vDir;
+    void main() {
+      vDir = normalize(position);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: `
+    varying vec3 vDir;
+    void main() {
+      float h = clamp(vDir.y, 0.0, 1.0);
+      vec3 horizon = vec3(0.11, 0.15, 0.28);
+      vec3 zenith  = vec3(0.018, 0.03, 0.08);
+      vec3 col = mix(horizon, zenith, pow(h, 0.55));
+      gl_FragColor = vec4(col, 1.0);
+    }`
+});
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(420, 32, 20), skyMat));
+
+/* ---------- 光源 ---------- */
+scene.add(new THREE.AmbientLight(0x46587c, 0.95));
+scene.add(new THREE.HemisphereLight(0x5a70a0, 0x1a2418, 0.55));
+const moonLight = new THREE.DirectionalLight(0xaec4ff, 2.3);
+moonLight.position.set(-25, 38, -35);
+moonLight.castShadow = true;
+moonLight.shadow.mapSize.set(2048, 2048);
+moonLight.shadow.camera.left = -14; moonLight.shadow.camera.right = 14;
+moonLight.shadow.camera.top = 14;   moonLight.shadow.camera.bottom = -14;
+moonLight.shadow.camera.far = 120;
+scene.add(moonLight);
+
+/* ---------- 月亮 ---------- */
+const moon = new THREE.Mesh(
+  new THREE.SphereGeometry(9, 32, 32),
+  new THREE.MeshBasicMaterial({ color: 0xfdf6d8, fog: false })
+);
+moon.position.set(-120, 150, -260);
+scene.add(moon);
+const moonHalo = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: makeGlowTexture(), color: 0xcfd9ff, transparent: true,
+  opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, fog: false
+}));
+moonHalo.scale.set(70, 70, 1);
+moonHalo.position.copy(moon.position);
+scene.add(moonHalo);
+
+/* ---------- 地面 ---------- */
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(240, 48),
+  new THREE.MeshStandardMaterial({ color: 0x16261d, roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+/* 茂密草地（實例化草葉，shader 內隨風搖曳） */
+const GRASS_COUNT = 4500;
+const grassUniforms = { uTime: { value: 0 }, uWind: { value: 0 } };
+const grassMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+grassMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uTime = grassUniforms.uTime;
+  shader.uniforms.uWind = grassUniforms.uWind;
+  shader.vertexShader = 'uniform float uTime;\nuniform float uWind;\n' + shader.vertexShader.replace(
+    '#include <begin_vertex>',
+    `#include <begin_vertex>
+    #ifdef USE_INSTANCING
+      vec4 iPos = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+      float sway = sin(uTime * (1.4 + uWind * 1.6) + iPos.x * 0.9 + iPos.z * 0.7)
+                 + 0.5 * sin(uTime * (2.3 + uWind * 2.2) + iPos.z * 1.6);
+      float bend = smoothstep(0.0, 1.0, position.y);
+      float amp = 0.5 + uWind * 2.4;               // 風越大擺幅越大
+      transformed.x += (sway * 0.06 * amp + uWind * 0.24) * bend;   // 並整體向風向傾倒
+      transformed.z += (sway * 0.03 * amp + uWind * 0.08) * bend;
+    #endif`
+  );
+};
+const bladeGeo = new THREE.ConeGeometry(0.028, 1, 4);
+bladeGeo.translate(0, 0.5, 0);   // 底部貼齊地面
+const grass = new THREE.InstancedMesh(bladeGeo, grassMat, GRASS_COUNT);
+grass.castShadow = true;
+grass.receiveShadow = true;
+{
+  const dummy = new THREE.Object3D();
+  const c = new THREE.Color();
+  for (let i = 0; i < GRASS_COUNT; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 0.6 + Math.sqrt(Math.random()) * 17;
+    dummy.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+    dummy.rotation.set((Math.random() - 0.5) * 0.35, Math.random() * Math.PI, (Math.random() - 0.5) * 0.35);
+    const h = 0.25 + Math.random() * 0.45;
+    dummy.scale.set(0.7 + Math.random() * 0.8, h, 0.7 + Math.random() * 0.8);
+    dummy.updateMatrix();
+    grass.setMatrixAt(i, dummy.matrix);
+    c.setHSL(0.33 + Math.random() * 0.06, 0.42 + Math.random() * 0.2, 0.16 + Math.random() * 0.13);
+    grass.setColorAt(i, c);
+  }
+  grass.instanceMatrix.needsUpdate = true;
+  grass.instanceColor.needsUpdate = true;
+}
+scene.add(grass);
+
+/* ---------- 樹 ---------- */
+const tree = new THREE.Group();
+const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.95 });
+const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.38, 3.4, 10), trunkMat);
+trunk.position.y = 1.7;
+trunk.castShadow = true;
+tree.add(trunk);
+
+const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.15, 1.6, 8), trunkMat);
+branch.position.set(0.7, 3.0, 0.2);
+branch.rotation.z = -0.9;
+branch.castShadow = true;
+tree.add(branch);
+
+const leafMat = new THREE.MeshStandardMaterial({ color: 0x2c5a3a, roughness: 0.9, flatShading: true });
+const foliage = new THREE.Group();
+const clumps = [
+  [0, 4.4, 0, 1.5], [-0.9, 3.9, 0.3, 1.1], [0.9, 4.0, -0.3, 1.15],
+  [0.2, 5.2, 0.2, 1.0], [1.4, 3.6, 0.5, 0.8], [-0.4, 3.7, -0.8, 0.9]
+];
+for (const [x, y, z, s] of clumps) {
+  const m = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 1), leafMat);
+  m.position.set(x, y, z);
+  m.castShadow = true;
+  foliage.add(m);
+}
+tree.add(foliage);
+scene.add(tree);
+
+/* ---------- 落葉（風吹落葉，簡易空氣動力學） ---------- */
+const LEAF_MAX = 160;
+const leafColors = [0x7a9a3f, 0xa8983c, 0xb37a2e, 0x5f8a3a, 0x96652a];
+const leafGeo = new THREE.PlaneGeometry(0.15, 0.22);
+const leafMatInst = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide, roughness: 0.9 });
+const leafMesh = new THREE.InstancedMesh(leafGeo, leafMatInst, LEAF_MAX);
+leafMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+leafMesh.frustumCulled = false;
+scene.add(leafMesh);
+{
+  const c = new THREE.Color();
+  for (let i = 0; i < LEAF_MAX; i++) {
+    c.setHex(leafColors[(Math.random() * leafColors.length) | 0]);
+    c.offsetHSL((Math.random() - 0.5) * 0.03, 0, (Math.random() - 0.5) * 0.08);
+    leafMesh.setColorAt(i, c);
+  }
+  leafMesh.instanceColor.needsUpdate = true;
+}
+const leafDummy = new THREE.Object3D();
+const leafZero = new THREE.Matrix4().makeScale(0, 0, 0);
+const leafPool = [];
+for (let i = 0; i < LEAF_MAX; i++) {
+  leafPool.push({
+    active: false, state: 'fall',
+    pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+    rot: new THREE.Euler(), spin: new THREE.Vector3(),
+    phase: 0, flutterW: 0, rnd: 0, size: 1, fade: 1, groundT: 0,
+  });
+  leafMesh.setMatrixAt(i, leafZero);
+}
+let leafAcc = 0;
+
+function spawnLeaf() {
+  const leaf = leafPool.find(l => !l.active);
+  if (!leaf) return;
+  /* 從隨機一叢樹冠的表面附近長出 */
+  const [cx, cy, cz, cs] = clumps[(Math.random() * clumps.length) | 0];
+  const a = Math.random() * Math.PI * 2;
+  const r = Math.random() * cs * 0.9;
+  leaf.pos.set(cx + Math.cos(a) * r, cy - Math.random() * cs * 0.5, cz + Math.sin(a) * r);
+  leaf.vel.set((Math.random() - 0.5) * 0.4, -0.2, (Math.random() - 0.5) * 0.4);
+  leaf.rot.set(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
+  leaf.spin.set((Math.random() - 0.5) * 5, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 5);
+  leaf.phase = Math.random() * Math.PI * 2;
+  leaf.flutterW = 2.5 + Math.random() * 2.5;
+  leaf.rnd = Math.random();
+  leaf.size = 0.8 + Math.random() * 0.5;
+  leaf.fade = 1;
+  leaf.state = 'fall';
+  leaf.groundT = 0;
+  leaf.active = true;
+}
+
+function updateLeaves(dt, t, wNow) {
+  /* 掉落速率與風力成正比：風越大掉越多 */
+  leafAcc += dt * wNow * 14;
+  while (leafAcc >= 1) { leafAcc -= 1; spawnLeaf(); }
+
+  for (let i = 0; i < LEAF_MAX; i++) {
+    const l = leafPool[i];
+    if (!l.active) continue;
+
+    if (l.state === 'fall') {
+      /* 空氣阻力：垂直速度趨近終端速度，水平速度趨近風速 */
+      const targetVy = -(0.9 + 0.6 * l.rnd);
+      l.vel.y += (targetVy - l.vel.y) * Math.min(1, dt * 2.2);
+      const wSpd = wNow * (2.2 + l.rnd * 2.5);
+      l.vel.x += (WIND_DIR.x * wSpd - l.vel.x) * dt * 1.6;
+      l.vel.z += (WIND_DIR.z * wSpd - l.vel.z) * dt * 1.6;
+      /* 左右擺盪 + 擺動時的升力，形成落葉特有的飄忽軌跡 */
+      const fl = Math.sin(t * l.flutterW + l.phase) * (0.5 + wNow * 0.5);
+      l.pos.x += (l.vel.x + fl * 0.45) * dt;
+      l.pos.z += (l.vel.z + Math.cos(t * l.flutterW * 0.8 + l.phase) * 0.3) * dt;
+      l.pos.y += (l.vel.y + Math.abs(fl) * 0.35) * dt;
+      const spinBoost = 1 + wNow * 1.5;
+      l.rot.x += l.spin.x * spinBoost * dt;
+      l.rot.y += l.spin.y * spinBoost * dt;
+      l.rot.z += l.spin.z * spinBoost * dt;
+      if (l.pos.y <= 0.02) {          // 落地：平躺
+        l.state = 'ground';
+        l.groundT = 0;
+        l.pos.y = 0.015;
+        l.rot.set(-Math.PI / 2 + (Math.random() - 0.5) * 0.4, Math.random() * Math.PI * 2, 0);
+      }
+    } else if (l.state === 'ground') {
+      l.groundT += dt;
+      if (wNow > 0.45) {              // 強風會把地上的葉子往前推著滑
+        l.pos.x += WIND_DIR.x * (wNow - 0.4) * 1.4 * dt;
+        l.pos.z += WIND_DIR.z * (wNow - 0.4) * 1.4 * dt;
+        l.rot.y += dt * 2 * (l.rnd - 0.5);
+      }
+      if (l.groundT >= 3) l.state = 'fade';   // 落地三秒後開始消失
+    } else {
+      l.fade -= dt / 0.4;
+      if (l.fade <= 0) {
+        l.active = false;
+        leafMesh.setMatrixAt(i, leafZero);
+        continue;
+      }
+    }
+
+    leafDummy.position.copy(l.pos);
+    leafDummy.rotation.copy(l.rot);
+    leafDummy.scale.setScalar(l.size * l.fade);
+    leafDummy.updateMatrix();
+    leafMesh.setMatrixAt(i, leafDummy.matrix);
+  }
+  leafMesh.instanceMatrix.needsUpdate = true;
+}
+
+/* ---------- 布偶貓（海豹重點色：白色長毛底、深棕點色、藍眼） ---------- */
+const cat = new THREE.Group();
+const creamMat = new THREE.MeshStandardMaterial({ color: 0xede3d0, roughness: 0.92 });  // 白色長毛底
+const sealMat  = new THREE.MeshStandardMaterial({ color: 0x4a3528, roughness: 0.9  });  // 海豹深棕
+const sealDark = new THREE.MeshStandardMaterial({ color: 0x352418, roughness: 0.9  });
+const noseMat  = new THREE.MeshStandardMaterial({ color: 0x6b4a44, roughness: 0.6  });
+
+function addPart(parent, geo, mat, x, y, z, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  m.scale.set(sx, sy, sz);
+  m.rotation.set(rx, ry, rz);
+  m.castShadow = true;
+  parent.add(m);
+  return m;
+}
+const S = (r, w = 28, h = 20) => new THREE.SphereGeometry(r, w, h);
+
+/* 身體根節點：打滾時繞它翻轉（部件座標以身體中心 y=0.85 為原點） */
+const roller = new THREE.Group();
+roller.position.y = 0.85;
+cat.add(roller);
+
+/* 後臀、軀幹、胸口與布偶貓蓬鬆的圍脖毛 */
+addPart(roller, S(0.5), creamMat, 0, -0.35, -0.3, 0.92, 0.78, 0.95);
+addPart(roller, S(0.5), creamMat, 0, 0.03, 0.02, 0.82, 1.06, 0.85);
+const chest = addPart(roller, S(0.42), creamMat, 0, 0.31, 0.16, 0.78, 0.9, 0.8);
+addPart(roller, S(0.34), creamMat, 0, 0.16, 0.26, 0.82, 1.0, 0.5);
+
+/* ----- 四肢：肩/肘、髖/膝 兩段式關節骨架 ----- */
+const shoulder = [], elbow = [], hip = [], knee = [];
+[-1, 1].forEach((sx) => {
+  /* 前腿：白色上臂 → 深棕前臂 → 深棕腳掌（重點色手套） */
+  const sh = new THREE.Group();
+  sh.position.set(sx * 0.22, 0.0, 0.36);   // 肩位外移前移，拍打時不掃進胸口
+  roller.add(sh);
+  addPart(sh, new THREE.CylinderGeometry(0.085, 0.09, 0.42, 12), creamMat, 0, -0.21, 0);
+  const el = new THREE.Group();
+  el.position.set(0, -0.42, 0);
+  sh.add(el);
+  addPart(el, new THREE.CylinderGeometry(0.068, 0.078, 0.38, 12), sealMat, 0, -0.19, 0);
+  addPart(el, S(0.12, 16, 12), sealDark, 0, -0.38, 0.04, 1, 0.65, 1.4);
+  shoulder.push(sh); elbow.push(el);
+
+  /* 後腿：白色大腿 → 深棕小腿與腳掌 */
+  const hp = new THREE.Group();
+  hp.position.set(sx * 0.4, -0.35, -0.22);   // 大腿外移，減少與臀部穿插
+  roller.add(hp);
+  addPart(hp, S(0.37), creamMat, 0, 0, 0, 0.72, 1.0, 1.15);
+  const kn = new THREE.Group();
+  kn.position.set(0, -0.40, 0.22);
+  hp.add(kn);
+  addPart(kn, new THREE.CylinderGeometry(0.06, 0.068, 0.3, 10), sealMat, 0, 0.02, 0.1, 1, 1, 1, Math.PI / 2, 0, 0);
+  addPart(kn, S(0.115, 16, 12), sealDark, 0, -0.02, 0.28, 1, 0.62, 1.5);
+  hip.push(hp); knee.push(kn);
+});
+
+/* 頭部（位置也上了彈簧，打滾時會縮向胸口） */
+const head = new THREE.Group();
+head.position.set(0, 0.77, 0.28);
+head.rotation.x = -0.5;                // 抬頭看星空
+roller.add(head);
+
+addPart(head, S(0.36, 32, 24), creamMat, 0, 0, 0, 1, 0.94, 0.96);          // 顱
+addPart(head, S(0.155), creamMat, -0.15, -0.13, 0.2);                      // 臉頰
+addPart(head, S(0.155), creamMat, 0.15, -0.13, 0.2);
+addPart(head, S(0.27, 28, 20), sealMat, 0, 0.02, 0.16, 1.0, 0.78, 0.7);    // 海豹色面罩
+addPart(head, S(0.15), sealMat, 0, -0.15, 0.27, 1.12, 0.78, 0.85);         // 口鼻
+addPart(head, S(0.042, 12, 10), noseMat, 0, -0.08, 0.40, 1, 0.8, 0.7);     // 鼻子
+
+/* 耳朵（深棕重點色，會偶爾抖動） */
+const earL = [], earR = [];
+for (const sx of [-1, 1]) {
+  const outer = addPart(head, new THREE.ConeGeometry(0.155, 0.34, 16), sealDark,
+          sx * 0.20, 0.31, -0.03, 1, 1, 0.55, -0.12, 0, -sx * 0.34);
+  const inner = addPart(head, new THREE.ConeGeometry(0.085, 0.19, 16), noseMat,
+          sx * 0.195, 0.285, 0.005, 1, 1, 0.5, -0.10, 0, -sx * 0.34);
+  (sx < 0 ? earL : earR).push(outer, inner);
+}
+
+/* 布偶貓的藍眼睛 + 直立瞳孔 */
+const eyeMat = new THREE.MeshBasicMaterial({ color: 0x8fc6ff });
+const pupilMat = new THREE.MeshBasicMaterial({ color: 0x0e1420 });
+for (const sx of [-1, 1]) {
+  addPart(head, S(0.072, 16, 12), eyeMat, sx * 0.145, 0.05, 0.325, 1, 1.15, 0.5, 0, sx * 0.22, 0);
+  addPart(head, S(0.034, 10, 8), pupilMat, sx * 0.143, 0.05, 0.363, 0.6, 1.3, 0.4, 0, sx * 0.22, 0);
+}
+
+/* 鬍鬚：左右各三根，向前掠、微微張開 */
+const whiskerMat = new THREE.MeshBasicMaterial({ color: 0xe8ecf5, transparent: true, opacity: 0.55 });
+const whiskerGeo = new THREE.CylinderGeometry(0.0035, 0.0035, 0.42, 4);
+whiskerGeo.rotateZ(Math.PI / 2);       // 轉成沿 X 軸
+for (const sx of [-1, 1]) {
+  for (const [dy, tilt] of [[0.02, 0.12], [-0.02, 0], [-0.06, -0.12]]) {
+    const w = new THREE.Mesh(whiskerGeo, whiskerMat);
+    w.position.set(sx * 0.28, -0.12 + dy, 0.3);
+    w.rotation.y = -sx * 0.3;
+    w.rotation.z = sx * tilt;
+    head.add(w);
+  }
+}
+
+/* ----- 尾巴：7 節彈簧鏈（深棕重點色、尾尖更深） ----- */
+const TAIL_SEGS = 7;
+const tailJoints = [];
+{
+  const radii = [0.095, 0.09, 0.085, 0.078, 0.07, 0.06, 0.05];
+  let parent = roller;
+  for (let i = 0; i < TAIL_SEGS; i++) {
+    const g = new THREE.Group();
+    g.position.set(i === 0 ? 0.05 : 0, i === 0 ? -0.43 : 0, i === 0 ? -0.72 : -0.23);
+    parent.add(g);
+    const mat = i < 5 ? sealMat : sealDark;
+    addPart(g, new THREE.CylinderGeometry(radii[i] * 0.9, radii[i], 0.24, 10), mat,
+            0, 0, -0.115, 1, 1, 1, Math.PI / 2, 0, 0);
+    addPart(g, S(radii[i], 12, 10), mat, 0, 0, -0.23);
+    tailJoints.push(g);
+    parent = g;
+  }
+}
+
+cat.position.set(2.5, 0, 1.3);
+cat.rotation.y = 2.55;                 // 面向遠方的夜空
+cat.scale.setScalar(0.9);
+scene.add(cat);
+
+/* ----- 關節彈簧：目標角度 + 彈簧追蹤，產生仿生的慣性、過衝與晃動 ----- */
+function mkSpring(v = 0) { return { c: v, v: 0, t: v }; }
+function stepSpring(s, dt, k, d) {
+  s.v += ((s.t - s.c) * k - s.v * d) * dt;
+  s.c += s.v * dt;
+  return s.c;
+}
+const shJ = [mkSpring(0.05), mkSpring(0.05)];
+const elJ = [mkSpring(0.08), mkSpring(0.08)];
+const hipJ = [mkSpring(0), mkSpring(0)];
+const kneeJ = [mkSpring(0), mkSpring(0)];
+const headJ = { x: mkSpring(-0.5), y: mkSpring(0), py: mkSpring(0.77), pz: mkSpring(0.28) };
+const poseJ = { y: mkSpring(0.85), px: mkSpring(0) };   // 身體高度與前傾（坐姿↔趴姿過渡）
+const earJ = [mkSpring(0), mkSpring(0)];
+const tailJ = tailJoints.map(() => ({ x: mkSpring(0), y: mkSpring(0) }));
+
+/* 坐姿時尾巴優雅盤到身前的目標曲線 */
+const TAIL_SIT = [
+  { x: -0.45, y: 0.10 }, { x: 0.28, y: 0.35 }, { x: 0.14, y: 0.50 },
+  { x: 0.05, y: 0.50 }, { x: 0, y: 0.45 }, { x: 0, y: 0.40 }, { x: 0, y: 0.35 },
+];
+/* 趴姿時尾巴放鬆拖在身後、微彎 */
+const TAIL_LIE = [
+  { x: -0.15, y: 0.08 }, { x: 0.10, y: 0.18 }, { x: 0.05, y: 0.22 },
+  { x: 0, y: 0.22 }, { x: 0, y: 0.20 }, { x: 0, y: 0.18 }, { x: 0, y: 0.15 },
+];
+
+/* 姿勢與打滾狀態 */
+let baseMode = 'sit';                       // 'sit' 坐 ↔ 'lie' 趴
+let poseTimer = 8 + Math.random() * 6;
+let lieTime = 0;                            // 已趴多久（趴穩才能打滾）
+let rolling = false, rollT = 0, rollDir = 1;
+let rollTimer = 5 + Math.random() * 6;
+const ROLL_DURATION = 5.2;
+let earTimer = 2 + Math.random() * 4, earHold = 0, earSide = 0;
+
+const ss01 = x => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
+const lerp = (a, b, x) => a + (b - a) * x;
+
+function updateCat(dt, t, wNow) {
+  /* --- 姿勢切換與打滾排程：想打滾會先趴下，趴穩了才開始滾 --- */
+  if (!rolling) {
+    poseTimer -= dt;
+    if (poseTimer <= 0) {
+      baseMode = baseMode === 'sit' ? 'lie' : 'sit';
+      lieTime = 0;
+      poseTimer = baseMode === 'lie' ? 9 + Math.random() * 8 : 7 + Math.random() * 7;
+    }
+    if (baseMode === 'lie') lieTime += dt;
+    rollTimer -= dt;
+    if (rollTimer <= 0 && baseMode === 'sit') {
+      poseTimer = Math.min(poseTimer, 1.2);        // 想打滾了：先去趴下
+    }
+    if (rollTimer <= 0 && baseMode === 'lie' && lieTime > 2.5) {
+      rolling = true; rollT = 0; rollDir = Math.random() < 0.5 ? -1 : 1;
+    }
+  } else {
+    rollT += dt;
+    if (rollT >= ROLL_DURATION) {
+      rolling = false;
+      rollTimer = 7 + Math.random() * 9;
+      baseMode = 'lie'; lieTime = 0;               // 滾完繼續趴著喘口氣
+      poseTimer = 5 + Math.random() * 6;
+    }
+  }
+
+  /* --- 身體軌跡：坐/趴基礎姿勢；打滾時為 蹲低→側倒→仰躺蹭背→換側→起身 --- */
+  let mode = baseMode;
+  let ang = Math.sin(t * 0.4) * 0.02;
+  let rootY = baseMode === 'lie' ? 0.42 : 0.85;
+  let pitch = baseMode === 'lie' ? 0.35 : 0;    // 趴下時身體前傾貼地
+  if (rolling) {
+    pitch = 0;
+    const p = rollT / ROLL_DURATION;
+    const W = k => Math.sin(k * Math.PI * 3) * 0.35 * Math.sin(Math.PI * k);   // 蹭背抖動波（頭尾歸零）
+    if (p < 0.1) { const k = ss01(p / 0.1); ang = 0; rootY = lerp(0.42, 0.46, k); pitch = lerp(0.35, 0.08, k); mode = 'crouch'; }
+    else if (p < 0.22) { const k = ss01((p - 0.1) / 0.12); ang = 1.6 * k; rootY = 0.46; pitch = lerp(0.08, 0, k); mode = 'side'; }
+    else if (p < 0.42) { const k = (p - 0.22) / 0.2; ang = 1.6 + W(k); rootY = 0.46; mode = 'back'; }
+    else if (p < 0.55) { const k = ss01((p - 0.42) / 0.13); ang = lerp(1.6, -1.6, k); rootY = 0.46 + 0.12 * Math.sin(Math.PI * k); mode = 'side'; }
+    else if (p < 0.75) { const k = (p - 0.55) / 0.2; ang = -1.6 - W(k); rootY = 0.46; mode = 'back'; }
+    else if (p < 0.9) { const k = ss01((p - 0.75) / 0.15); ang = lerp(-1.6, 0, k); rootY = lerp(0.46, 0.44, k); pitch = lerp(0, 0.3, k); mode = 'rise'; }
+    else { const k = ss01((p - 0.9) / 0.1); ang = 0; rootY = lerp(0.44, 0.42, k); pitch = lerp(0.3, 0.35, k); mode = 'lie'; }
+  }
+  roller.rotation.z = ang * rollDir;
+  /* 高度與前傾走彈簧：坐↔趴緩慢過渡，打滾時用高剛性緊跟腳本 */
+  poseJ.y.t = rootY; poseJ.px.t = pitch;
+  const pk = rolling ? 130 : 22, pd = rolling ? 22 : 8;
+  roller.position.y = stepSpring(poseJ.y, dt, pk, pd);
+  roller.rotation.x = stepSpring(poseJ.px, dt, pk, pd);
+
+  /* --- 各階段的關節與頭部目標姿勢（彈簧會平滑追過去） --- */
+  let shT, elT, hipT, kneeT;
+  if (mode === 'sit') {
+    shT = [0.05, 0.05]; elT = [0.08, 0.08]; hipT = [0, 0]; kneeT = [0, 0];
+    headJ.x.t = -0.5 + Math.sin(t * 0.5) * 0.05;
+    headJ.y.t = Math.sin(t * 0.35) * 0.18;
+    headJ.py.t = 0.77; headJ.pz.t = 0.28;
+  } else if (mode === 'lie') {
+    /* 人面獅身趴姿：前腿向前伸直平放、後腿收攏在身側，頭依然抬著看星空 */
+    shT = [-1.9, -1.85]; elT = [0.7, 0.75]; hipT = [-0.1, -0.1]; kneeT = [0.1, 0.1];
+    headJ.x.t = -0.55 + Math.sin(t * 0.4) * 0.06;
+    headJ.y.t = Math.sin(t * 0.3) * 0.2;
+    headJ.py.t = 0.72; headJ.pz.t = 0.3;
+  } else if (mode === 'crouch') {
+    shT = [0.55, 0.55]; elT = [1.15, 1.15]; hipT = [-0.15, -0.15]; kneeT = [0.2, 0.2];
+    headJ.x.t = -0.15; headJ.y.t = 0;
+    headJ.py.t = 0.6; headJ.pz.t = 0.35;
+  } else if (mode === 'side') {
+    shT = [0.25, 0.4]; elT = [0.7, 0.95]; hipT = [-0.5, -0.38]; kneeT = [0.5, 0.4];
+    headJ.x.t = -0.3; headJ.y.t = 0.25 * rollDir;
+    headJ.py.t = 0.5; headJ.pz.t = 0.42;
+  } else if (mode === 'back') {
+    /* 仰躺踢腿：左右交替、頻率錯開的拍打，像在空中撥空氣 */
+    const s1 = Math.sin(t * 6.2), s2 = Math.sin(t * 6.2 + 2.8);
+    shT = [0.35 + 0.45 * s1, 0.35 + 0.45 * s2];
+    elT = [0.9 + 0.5 * Math.sin(t * 6.2 + 1.2), 0.9 + 0.5 * Math.sin(t * 6.2 + 4.0)];
+    hipT = [-0.85 + 0.3 * s2, -0.85 + 0.3 * s1];
+    kneeT = [0.7 + 0.35 * s1, 0.7 + 0.35 * s2];
+    headJ.x.t = -0.2 + 0.15 * Math.sin(t * 3.1);
+    headJ.y.t = 0.35 * Math.sin(t * 2.3);
+    headJ.py.t = 0.5; headJ.pz.t = 0.42;
+  } else { /* rise */
+    shT = [0.15, 0.15]; elT = [0.3, 0.3]; hipT = [-0.2, -0.2]; kneeT = [0.2, 0.2];
+    headJ.x.t = -0.45; headJ.y.t = 0;
+    headJ.py.t = 0.7; headJ.pz.t = 0.3;
+  }
+
+  /* --- 尾巴目標：坐著時盤繞微擺（風大擺更大）；打滾時甩尾行波 --- */
+  for (let i = 0; i < TAIL_SEGS; i++) {
+    if (mode === 'back' || mode === 'side') {
+      tailJ[i].x.t = (i === 0 ? -0.1 : 0) + Math.sin(t * 7 - i * 0.9) * 0.32;
+      tailJ[i].y.t = 0.1;
+    } else {
+      const pose = mode === 'lie' ? TAIL_LIE : TAIL_SIT;
+      const sway = i >= 4 ? Math.sin(t * 1.3 + i * 0.7) * (0.1 + wNow * 0.18) : 0;
+      tailJ[i].x.t = pose[i].x;
+      tailJ[i].y.t = pose[i].y + sway;
+    }
+  }
+
+  /* --- 耳朵偶爾快速抖一下 --- */
+  earTimer -= dt;
+  if (earTimer <= 0) {
+    earSide = (Math.random() * 2) | 0;
+    earJ[earSide].t = 0.5;
+    earHold = 0.1;
+    earTimer = 2.5 + Math.random() * 5;
+  }
+  if (earHold > 0) { earHold -= dt; if (earHold <= 0) earJ[earSide].t = 0; }
+
+  /* --- 彈簧積分並套用到骨架 --- */
+  for (const i of [0, 1]) {
+    shJ[i].t = shT[i]; elJ[i].t = elT[i]; hipJ[i].t = hipT[i]; kneeJ[i].t = kneeT[i];
+    shoulder[i].rotation.x = stepSpring(shJ[i], dt, 70, 11);
+    elbow[i].rotation.x = stepSpring(elJ[i], dt, 70, 11);
+    hip[i].rotation.x = stepSpring(hipJ[i], dt, 60, 10);
+    knee[i].rotation.x = stepSpring(kneeJ[i], dt, 60, 10);
+  }
+  head.rotation.x = stepSpring(headJ.x, dt, 50, 9);
+  head.rotation.y = stepSpring(headJ.y, dt, 50, 9);
+  head.position.y = stepSpring(headJ.py, dt, 50, 9);
+  head.position.z = stepSpring(headJ.pz, dt, 50, 9);
+  for (let i = 0; i < TAIL_SEGS; i++) {
+    tailJoints[i].rotation.x = stepSpring(tailJ[i].x, dt, 34, 6.5);
+    tailJoints[i].rotation.y = stepSpring(tailJ[i].y, dt, 34, 6.5);
+  }
+  const f0 = stepSpring(earJ[0], dt, 220, 14);
+  const f1 = stepSpring(earJ[1], dt, 220, 14);
+  earL[0].rotation.z = 0.34 + f0; earL[1].rotation.z = 0.34 + f0;
+  earR[0].rotation.z = -0.34 - f1; earR[1].rotation.z = -0.34 - f1;
+
+  /* 呼吸 */
+  chest.scale.y = 0.9 + Math.sin(t * 1.7) * 0.02;
+}
+
+/* ---------- 星星（閃爍） ---------- */
+function makeStars(count, bandMode) {
+  const pos = new Float32Array(count * 3);
+  const scale = new Float32Array(count);
+  const phase = new Float32Array(count);
+  const col = new Float32Array(count * 3);
+  const rnd = new Float32Array(count);
+  const tints = [[1, 1, 1], [0.75, 0.85, 1], [1, 0.92, 0.78], [0.85, 0.95, 1]];
+  const axisA = new THREE.Vector3(1, 0.55, -0.4).normalize();
+  const axisB = new THREE.Vector3(0.3, 0.6, 1).normalize().cross(axisA).normalize();
+  let n = 0;
+  while (n < count) {
+    let v;
+    if (bandMode) {   // 銀河帶
+      const t = Math.random() * Math.PI * 2;
+      v = new THREE.Vector3()
+        .addScaledVector(axisA, Math.cos(t))
+        .addScaledVector(axisB, Math.sin(t))
+        .addScaledVector(new THREE.Vector3(Math.random() - .5, Math.random() - .5, Math.random() - .5), 0.28)
+        .normalize();
+    } else {
+      v = new THREE.Vector3(Math.random() * 2 - 1, Math.random(), Math.random() * 2 - 1).normalize();
+    }
+    if (v.y < 0.03) continue;
+    const R = 200 + Math.random() * 140;
+    pos.set([v.x * R, v.y * R, v.z * R], n * 3);
+    scale[n] = bandMode ? 0.5 + Math.random() * 0.9 : 0.7 + Math.random() * 1.9;
+    phase[n] = Math.random() * Math.PI * 2;
+    const c = tints[(Math.random() * tints.length) | 0];
+    col.set(c, n * 3);
+    rnd[n] = Math.random();
+    n++;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aScale', new THREE.BufferAttribute(scale, 1));
+  geo.setAttribute('aPhase', new THREE.BufferAttribute(phase, 1));
+  geo.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
+  geo.setAttribute('aRand', new THREE.BufferAttribute(rnd, 1));
+  return geo;
+}
+
+const starUniforms = {
+  uTime: { value: 0 },
+  uTwinkle: { value: 1 },
+  uDensity: { value: 1 },
+  uBright: { value: 1 },
+};
+const starMat = new THREE.ShaderMaterial({
+  uniforms: starUniforms,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexShader: `
+    uniform float uTime;
+    uniform float uTwinkle;
+    uniform float uDensity;
+    attribute float aScale;
+    attribute float aPhase;
+    attribute float aRand;
+    attribute vec3 aColor;
+    varying float vAlpha;
+    varying vec3 vColor;
+    void main() {
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      float tw = 0.55 + 0.45 * sin(uTime * uTwinkle * (1.2 + fract(aPhase) * 1.8) + aPhase);
+      float on = step(aRand, uDensity);   // 依密度門檻隱藏部分星星
+      vAlpha = tw * on;
+      vColor = aColor;
+      gl_PointSize = aScale * (0.6 + 0.4 * tw) * (420.0 / -mv.z) * on;
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    uniform float uBright;
+    varying float vAlpha;
+    varying vec3 vColor;
+    void main() {
+      float d = length(gl_PointCoord - 0.5);
+      float a = smoothstep(0.5, 0.05, d);
+      gl_FragColor = vec4(vColor, a * vAlpha * uBright);
+    }`
+});
+scene.add(new THREE.Points(makeStars(1600, false), starMat));
+scene.add(new THREE.Points(makeStars(1400, true), starMat));
+
+/* ---------- 流星群 ---------- */
+const METEOR_COUNT = 70;
+const TRAIL_PTS = 12;
+const meteors = [];
+const meteorGroup = new THREE.Group();
+scene.add(meteorGroup);
+
+const headPositions = new Float32Array(METEOR_COUNT * 3);
+const headGeo = new THREE.BufferGeometry();
+headGeo.setAttribute('position', new THREE.BufferAttribute(headPositions, 3));
+const headPoints = new THREE.Points(headGeo, new THREE.PointsMaterial({
+  map: makeGlowTexture(), color: 0xfff6e0, size: 4.5,
+  transparent: true, blending: THREE.AdditiveBlending,
+  depthWrite: false, sizeAttenuation: true
+}));
+headPoints.frustumCulled = false;
+scene.add(headPoints);
+
+for (let i = 0; i < METEOR_COUNT; i++) {
+  const positions = new Float32Array(TRAIL_PTS * 3);
+  const colors = new Float32Array(TRAIL_PTS * 3);
+  for (let j = 0; j < TRAIL_PTS; j++) {
+    const f = Math.pow(1 - j / (TRAIL_PTS - 1), 2.2);   // 加法混色下，黑色 = 透明
+    colors.set([f, f * 0.94, f * 0.82], j * 3);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  }));
+  line.frustumCulled = false;
+  meteorGroup.add(line);
+  const m = { line, head: new THREE.Vector3(), vel: new THREE.Vector3(), len: 10, delay: 0 };
+  resetMeteor(m, true);
+  meteors.push(m);
+}
+
+function resetMeteor(m, initial) {
+  const az = Math.random() * Math.PI * 2;
+  const el = 0.45 + Math.random() * 0.85;
+  const R = 150 + Math.random() * 90;
+  m.head.set(
+    Math.cos(az) * Math.cos(el) * R,
+    Math.sin(el) * R,
+    Math.sin(az) * Math.cos(el) * R
+  );
+  m.vel.set(-(0.6 + Math.random()), -(0.35 + Math.random() * 0.55), (Math.random() - 0.5) * 0.7)
+       .normalize().multiplyScalar(55 + Math.random() * 95);
+  m.len = 7 + Math.random() * 16;
+  m.delay = initial ? Math.random() * 5 : 0.3 + Math.random() * 3.5;
+}
+
+const _dir = new THREE.Vector3();
+function updateMeteors(dt) {
+  for (let i = 0; i < METEOR_COUNT; i++) {
+    const m = meteors[i];
+    if (i >= params.meteors) {          // 超出數量上限的流星直接隱藏
+      m.line.visible = false;
+      headPositions.set([0, -9999, 0], i * 3);
+      continue;
+    }
+    if (m.delay > 0) {
+      m.delay -= dt;
+      m.line.visible = false;
+      headPositions.set([0, -9999, 0], i * 3);
+      continue;
+    }
+    m.line.visible = true;
+    m.head.addScaledVector(m.vel, dt);
+    if (m.head.y < 12 || m.head.lengthSq() > 400 * 400) { resetMeteor(m, false); continue; }
+    _dir.copy(m.vel).normalize();
+    const step = m.len / (TRAIL_PTS - 1);
+    const attr = m.line.geometry.attributes.position;
+    for (let j = 0; j < TRAIL_PTS; j++) {
+      attr.setXYZ(j,
+        m.head.x - _dir.x * step * j,
+        m.head.y - _dir.y * step * j,
+        m.head.z - _dir.z * step * j
+      );
+    }
+    attr.needsUpdate = true;
+    headPositions.set([m.head.x, m.head.y, m.head.z], i * 3);
+  }
+  headGeo.attributes.position.needsUpdate = true;
+}
+
+/* ---------- 螢火蟲 ---------- */
+const FIREFLY_COUNT = 60;
+const ffBase = new Float32Array(FIREFLY_COUNT * 3);
+const ffPhase = new Float32Array(FIREFLY_COUNT);
+const ffSpeed = new Float32Array(FIREFLY_COUNT);
+for (let i = 0; i < FIREFLY_COUNT; i++) {
+  const a = Math.random() * Math.PI * 2;
+  const r = 1.5 + Math.random() * 13;
+  ffBase.set([Math.cos(a) * r, 0.4 + Math.random() * 1.4, Math.sin(a) * r], i * 3);
+  ffPhase[i] = Math.random() * Math.PI * 2;
+  ffSpeed[i] = 0.5 + Math.random() * 0.9;
+}
+const ffGeo = new THREE.BufferGeometry();
+ffGeo.setAttribute('position', new THREE.BufferAttribute(ffBase, 3));
+ffGeo.setAttribute('aPhase', new THREE.BufferAttribute(ffPhase, 1));
+ffGeo.setAttribute('aSpeed', new THREE.BufferAttribute(ffSpeed, 1));
+const ffUniforms = { uTime: { value: 0 } };
+const fireflies = new THREE.Points(ffGeo, new THREE.ShaderMaterial({
+  uniforms: ffUniforms,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexShader: `
+    uniform float uTime;
+    attribute float aPhase;
+    attribute float aSpeed;
+    varying float vGlow;
+    void main() {
+      float t = uTime * aSpeed;
+      vec3 p = position + vec3(
+        sin(t * 0.8 + aPhase) * 1.1 + sin(t * 0.31 + aPhase * 2.0) * 0.5,
+        sin(t * 0.6 + aPhase * 1.7) * 0.45,
+        cos(t * 0.7 + aPhase) * 1.1 + cos(t * 0.27 + aPhase * 3.0) * 0.5
+      );
+      p.y = max(p.y, 0.15);
+      float blink = pow(0.5 + 0.5 * sin(uTime * 2.4 * aSpeed + aPhase * 3.0), 2.0);
+      vGlow = 0.25 + 0.75 * blink;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      gl_PointSize = (10.0 + 14.0 * blink) * (18.0 / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    varying float vGlow;
+    void main() {
+      float d = length(gl_PointCoord - 0.5);
+      float core = smoothstep(0.18, 0.0, d);
+      float halo = smoothstep(0.5, 0.05, d) * 0.55;
+      vec3 col = vec3(0.72, 1.0, 0.35) * halo + vec3(0.95, 1.0, 0.75) * core;
+      gl_FragColor = vec4(col * vGlow, (core + halo) * vGlow);
+    }`
+}));
+fireflies.frustumCulled = false;
+scene.add(fireflies);
+
+/* 幾盞微弱的綠色點光，讓草地被螢火蟲映亮 */
+for (const [x, z] of [[3.5, 3.5], [-3, 4], [-1, -3.5]]) {
+  const pl = new THREE.PointLight(0x8aff50, 2.2, 7, 2);
+  pl.position.set(x, 0.8, z);
+  scene.add(pl);
+}
+
+/* ---------- 工具：柔光貼圖 ---------- */
+function makeGlowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.35, 'rgba(255,250,230,0.45)');
+  g.addColorStop(1, 'rgba(255,250,230,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
+/* ---------- 動畫迴圈 ---------- */
+const clock = new THREE.Clock();
+
+const lookTarget = new THREE.Vector3(0.8, 5.4, 0.5);   // 望向樹梢與貓之間、抬頭看向夜空
+
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+  const wNow = windStrength(t);        // 當下風強（含陣風起伏）
+
+  starUniforms.uTime.value = t;
+  starUniforms.uTwinkle.value = params.twinkle;
+  starUniforms.uDensity.value = params.starDensity;
+  starUniforms.uBright.value = params.starBright;
+  ffUniforms.uTime.value = t;
+  grassUniforms.uTime.value = t;
+  grassUniforms.uWind.value = Math.min(1.3, wNow);
+  updateMeteors(dt);
+  updateLeaves(dt, t, wNow);
+
+  /* 樹冠搖曳：風主要加大擺幅，頻率只微升，避免高頻抖動 */
+  foliage.rotation.z = Math.sin(t * (0.5 + wNow * 0.45)) * (0.02 + wNow * 0.065);
+  foliage.rotation.x = Math.cos(t * (0.4 + wNow * 0.35)) * (0.015 + wNow * 0.042);
+
+  /* 貓：骨架關節彈簧 + 打滾狀態機 */
+  updateCat(dt, t, wNow);
+
+  /* 攝影機：依滑桿環繞場景，並保留緩慢輕微漂移 */
+  const az = THREE.MathUtils.degToRad(params.camAngle);
+  camera.position.x = Math.sin(az) * params.camDist + Math.sin(t * 0.12) * 0.35;
+  camera.position.y = params.camHeight + Math.sin(t * 0.15) * 0.15;
+  camera.position.z = Math.cos(az) * params.camDist + Math.cos(t * 0.1) * 0.3;
+  lookTarget.y = params.lookY;
+  camera.lookAt(lookTarget);
+
+  renderer.render(scene, camera);
+});
+
+/* ---------- 控制面板綁定 ---------- */
+const FMT = {
+  camAngle: v => `${Math.round(v)}°`,
+  camHeight: v => (+v).toFixed(1),
+  camDist: v => (+v).toFixed(1),
+  lookY: v => (+v).toFixed(1),
+  starDensity: v => `${Math.round(v * 100)}%`,
+  starBright: v => `${(+v).toFixed(2)}×`,
+  twinkle: v => `${(+v).toFixed(2)}×`,
+  meteors: v => `${Math.round(v)} 顆`,
+  wind: v => `${Math.round(v)}`,
+};
+for (const key of Object.keys(FMT)) {
+  const input = document.getElementById('s-' + key);
+  const out = document.getElementById('o-' + key);
+  input.value = params[key];
+  out.textContent = FMT[key](params[key]);
+  input.addEventListener('input', () => {
+    params[key] = +input.value;
+    out.textContent = FMT[key](params[key]);
+  });
+}
+
+const panel = document.getElementById('panel');
+const openBtn = document.getElementById('openPanel');
+document.getElementById('closePanel').addEventListener('click', () => {
+  panel.classList.add('hidden');
+  openBtn.classList.add('show');
+});
+openBtn.addEventListener('click', () => {
+  panel.classList.remove('hidden');
+  openBtn.classList.remove('show');
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>城市酷跑 City Rush</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #1a1030;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    font-family: "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+  #game { display: block; width: 100%; height: 100%; }
+
+  /* ---------- HUD ---------- */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: none;
+    justify-content: space-between;
+    padding: 14px 18px;
+    pointer-events: none;
+    color: #fff;
+    text-shadow: 0 2px 6px rgba(0,0,0,.55);
+  }
+  #hud .score { font-size: clamp(22px, 4.5vmin, 34px); font-weight: 800; letter-spacing: 1px; }
+  #hud .coins {
+    font-size: clamp(16px, 3.5vmin, 24px); font-weight: 700;
+    display: flex; align-items: center; gap: 8px;
+  }
+  #hud .coin-icon {
+    width: 1em; height: 1em; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ffe98a, #f5b301 60%, #c07f00);
+    box-shadow: 0 0 8px rgba(255,200,50,.8);
+    display: inline-block;
+  }
+
+  /* ---------- 覆蓋層 ---------- */
+  .overlay {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(10, 6, 30, .55);
+    backdrop-filter: blur(3px);
+    color: #fff; text-align: center;
+    z-index: 10;
+  }
+  .overlay.hidden { display: none; }
+  .overlay h1 {
+    font-size: clamp(36px, 9vmin, 72px);
+    font-weight: 900;
+    background: linear-gradient(180deg, #ffe27a, #ff8b3d);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: none;
+    filter: drop-shadow(0 4px 10px rgba(0,0,0,.5));
+    margin-bottom: 6px;
+  }
+  .overlay .sub { font-size: clamp(14px, 3vmin, 20px); opacity: .85; margin-bottom: 26px; }
+  .overlay .panel {
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 16px;
+    padding: 18px 28px;
+    margin-bottom: 26px;
+    line-height: 1.9;
+    font-size: clamp(13px, 2.8vmin, 17px);
+  }
+  .overlay .panel b { color: #ffd35c; }
+  .overlay .big-score { font-size: clamp(40px, 10vmin, 80px); font-weight: 900; line-height: 1.1; }
+  .overlay .hi { color: #ffd35c; font-size: clamp(15px, 3.2vmin, 22px); margin: 8px 0 24px; }
+  .overlay .new-record {
+    color: #7dffa8; font-weight: 800;
+    animation: pulse 0.8s ease-in-out infinite alternate;
+  }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.12); } }
+  .btn {
+    pointer-events: auto;
+    cursor: pointer;
+    font-size: clamp(18px, 4vmin, 26px);
+    font-weight: 800;
+    color: #2b1a00;
+    background: linear-gradient(180deg, #ffd75e, #ff9f2e);
+    border: none; border-radius: 999px;
+    padding: 14px 52px;
+    box-shadow: 0 6px 20px rgba(255,150,30,.45), inset 0 2px 0 rgba(255,255,255,.5);
+    transition: transform .1s ease;
+  }
+  .btn:hover { transform: scale(1.05); }
+  .btn:active { transform: scale(.96); }
+  .hint { margin-top: 18px; font-size: clamp(11px, 2.4vmin, 14px); opacity: .6; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div class="score" id="hudScore">0</div>
+  <div class="coins"><span class="coin-icon"></span><span id="hudCoins">0</span></div>
+</div>
+
+<div class="overlay" id="menuOverlay">
+  <h1>城市酷跑</h1>
+  <div class="sub">在無盡的街道上奔跑，閃避障礙、收集金幣！</div>
+  <div class="panel">
+    ⌨️ 鍵盤：<b>← →</b> 換跑道　<b>↑ / 空白鍵</b> 跳躍　<b>↓</b> 下滑<br>
+    📱 手機：<b>左右滑</b> 換道　<b>上滑</b> 跳躍　<b>下滑</b> 蹲滑
+  </div>
+  <button class="btn" id="startBtn">開始遊戲</button>
+  <div class="hint" id="menuHi"></div>
+</div>
+
+<div class="overlay hidden" id="deadOverlay">
+  <h1>GAME OVER</h1>
+  <div class="big-score" id="finalScore">0</div>
+  <div class="hi" id="finalHi"></div>
+  <button class="btn" id="retryBtn">再玩一次</button>
+  <div class="hint">按 空白鍵 / Enter 也可以重新開始</div>
+</div>
+
+<script>
+'use strict';
+
+/* =============================================================
+ *  基本設定與投影
+ * ============================================================= */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+let W = 0, H = 0, dpr = 1, ppu0 = 100; // ppu0: z=0 時每世界單位的像素數
+
+const FOCAL    = 6;      // 透視焦距（世界單位）
+const Z_SPAWN  = 72;     // 物件生成深度
+const Z_PLAYER = 2.5;    // 玩家所在深度
+const LANE_W   = 2.2;    // 跑道寬（世界單位）
+const ROAD_HALF = LANE_W * 1.5 + 0.35;
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width  = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ppu0 = Math.min(W * 0.16, H * 0.23);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// 攝影機高度感 ∝ (bottomY - horizonY) / ppu0：拉大地面縱深、玩家往後移，
+// 視角變高、俯角變大，就能看過火車頂部
+const horizonY = () => H * 0.30;
+const bottomY  = () => H * 1.25;
+const sc = z => FOCAL / (FOCAL + Math.max(z, -FOCAL * 0.9));
+function groundY(z) { return horizonY() + (bottomY() - horizonY()) * sc(z); }
+// 世界座標 (x, z) 投影到螢幕，回傳 {x, y, s}，s 為該深度的縮放像素數/單位
+function project(x, z) {
+  const s = sc(z);
+  return { x: W / 2 + x * ppu0 * s + shakeX, y: groundY(z) + shakeY, s: ppu0 * s };
+}
+
+/* =============================================================
+ *  遊戲狀態
+ * ============================================================= */
+const HS_KEY = 'subwayRunHighScore';
+let state = 'menu';            // menu | playing | dead
+let highScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10) || 0;
+
+let dist = 0;                  // 已跑距離（世界單位）
+let speed = 0;                 // 前進速度（單位/秒）
+let elapsed = 0;               // 本局經過秒數
+let coinCount = 0;
+let score = 0;
+let timeScale = 1;             // 死亡慢動作用
+let deadTimer = 0;
+let shakeX = 0, shakeY = 0, shakeAmt = 0;
+
+const player = {
+  lane: 0,          // 目標跑道 -1/0/1
+  x: 0,             // 目前世界 x（平滑插值）
+  y: 0,             // 腳離地高度
+  vy: 0,
+  sliding: 0,       // 剩餘下滑時間
+  support: 0,       // 腳下支撐高度（0=地面，TRAIN_H=火車頂）
+  runPhase: 0,      // 跑步動畫相位
+  deadSpin: 0,
+};
+const JUMP_V = 11.5, GRAVITY = 26, SLIDE_TIME = 0.5; // 跳躍頂點約 2.54，足以真實跳越車頂
+const TRAIN_H = 2.2;   // 火車高度（車頂可以踩）
+const LAND_EPS = 0.15; // 貼齊車頂的容差（消除幀差抖動，非瞬移）
+const PLAYER_H = 1.8, SLIDE_H = 0.9;
+
+let obstacles = [];   // {type:'barrier'|'overhang'|'train', lane, z, depth, color}
+let coins = [];       // {lane, z, y, taken}
+let particles = [];   // {x,y,z, vx,vy, life, color, size}  (x,y 為世界座標偏移)
+let buildings = [];   // 兩側景物 {side, x, z, w, h, color}
+let clouds = [];      // {x(0-1), y(0-1), w, spd}
+let distSinceWave = 0;
+let nextWaveGap = 18;
+
+/* =============================================================
+ *  音效（Web Audio 合成，無外部素材）
+ * ============================================================= */
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+function tone(freq, endFreq, dur, type, vol, when) {
+  if (!audioCtx) return;
+  const t0 = audioCtx.currentTime + (when || 0);
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t0);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(endFreq, 1), t0 + dur);
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  osc.connect(g).connect(audioCtx.destination);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.02);
+}
+const sfxCoin  = () => { tone(988, 988, 0.07, 'sine', 0.12); tone(1319, 1319, 0.12, 'sine', 0.12, 0.07); };
+const sfxJump  = () => tone(280, 620, 0.16, 'square', 0.06);
+const sfxSlide = () => tone(500, 220, 0.15, 'sawtooth', 0.05);
+const sfxLane  = () => tone(360, 460, 0.06, 'triangle', 0.06);
+const sfxCrash = () => { tone(220, 45, 0.4, 'sawtooth', 0.18); tone(160, 40, 0.5, 'square', 0.12, 0.02); };
+
+/* =============================================================
+ *  景物初始化
+ * ============================================================= */
+const BUILDING_COLORS = ['#3a2d5e', '#463569', '#2f2650', '#514078', '#3d3163'];
+function makeBuilding(z) {
+  const side = Math.random() < 0.5 ? -1 : 1;
+  return {
+    side,
+    x: side * (ROAD_HALF + 2.2 + Math.random() * 6),
+    z,
+    w: 2.5 + Math.random() * 3.5,
+    h: 3 + Math.random() * 9,
+    color: BUILDING_COLORS[(Math.random() * BUILDING_COLORS.length) | 0],
+    win: Math.random(),
+  };
+}
+function initScenery() {
+  buildings = [];
+  for (let i = 0; i < 26; i++) buildings.push(makeBuilding(Math.random() * Z_SPAWN));
+  clouds = [];
+  for (let i = 0; i < 6; i++) {
+    clouds.push({ x: Math.random(), y: 0.06 + Math.random() * 0.2, w: 0.08 + Math.random() * 0.12, spd: 0.004 + Math.random() * 0.008 });
+  }
+}
+initScenery();
+
+/* =============================================================
+ *  障礙物與金幣生成
+ * ============================================================= */
+const TRAIN_COLORS = ['#d64545', '#4576d6', '#3fae6a', '#c99b3f'];
+function makeObstacle(type, lane, z) {
+  if (type === 'train') {
+    return { type, lane, z, depth: 8 + Math.random() * 6, color: TRAIN_COLORS[(Math.random() * TRAIN_COLORS.length) | 0] };
+  }
+  return { type, lane, z, depth: 0.6 };
+}
+function laneBlockedByTrain(lane, z0, z1) {
+  return obstacles.some(o => o.type === 'train' && o.lane === lane && o.z < z1 && o.z + o.depth > z0);
+}
+function laneHasBarrier(lane, z0, z1) {
+  return obstacles.find(o => o.type === 'barrier' && o.lane === lane && o.z < z1 && o.z + o.depth > z0);
+}
+
+function spawnWave() {
+  const lanes = [-1, 0, 1];
+  const r = Math.random();
+  const pickType = () => {
+    const t = Math.random();
+    if (t < 0.38) return 'barrier';
+    if (t < 0.66) return 'overhang';
+    return 'train';
+  };
+  // 洗牌跑道
+  for (let i = lanes.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [lanes[i], lanes[j]] = [lanes[j], lanes[i]];
+  }
+  let count;
+  if (r < 0.4) count = 1;
+  else if (r < 0.82) count = 2;
+  else count = 3;
+
+  let trainCount = 0;
+  const wave = [];
+  for (let i = 0; i < count; i++) {
+    // 該跑道還有火車尾端經過生成點時，跳過，避免障礙疊在車身上
+    if (laneBlockedByTrain(lanes[i], Z_SPAWN - 1, Z_SPAWN + 4)) continue;
+    let type = pickType();
+    // 保證永遠有活路：三格全滿時至少一格可跳/可滑，火車最多兩台
+    if (type === 'train' && (trainCount >= 2 || (count === 3 && i === 2 && wave.every(o => o.type === 'train')))) {
+      type = Math.random() < 0.5 ? 'barrier' : 'overhang';
+    }
+    if (type === 'train') trainCount++;
+    wave.push(makeObstacle(type, lanes[i], Z_SPAWN));
+  }
+  obstacles.push(...wave);
+
+  // 60% 機率在下一波之前生成一串金幣
+  if (Math.random() < 0.6) spawnCoinString(Z_SPAWN + 6 + Math.random() * 6);
+}
+
+function spawnCoinString(zStart) {
+  const tryLanes = [-1, 0, 1].sort(() => Math.random() - 0.5);
+  const n = 5 + ((Math.random() * 4) | 0);
+  const zEnd = zStart + n * 1.3;
+  for (const lane of tryLanes) {
+    const train = obstacles.find(o => o.type === 'train' && o.lane === lane && o.z < zEnd + 2 && o.z + o.depth > zStart - 2);
+    if (train) {
+      // 55% 機率把金幣排在車頂上，獎勵跳上去跑的玩家
+      if (Math.random() < 0.55) {
+        for (let z = train.z + 1; z < train.z + train.depth - 0.8; z += 1.3) {
+          coins.push({ lane, z, y: TRAIN_H + 0.85, taken: false });
+        }
+      }
+      return;
+    }
+    const barrier = laneHasBarrier(lane, zStart - 2, zEnd + 2);
+    for (let i = 0; i < n; i++) {
+      const z = zStart + i * 1.3;
+      let y = 0.9;
+      if (barrier) {
+        // 弧線越過低欄
+        const t = (z - (barrier.z - 2)) / 4.5;
+        if (t > 0 && t < 1) y = 0.9 + Math.sin(t * Math.PI) * 1.5;
+      }
+      coins.push({ lane, z, y, taken: false });
+    }
+    return;
+  }
+}
+
+/* =============================================================
+ *  輸入處理
+ * ============================================================= */
+function doLeft()  { if (state !== 'playing') return; if (player.lane > -1) { player.lane--; sfxLane(); } }
+function doRight() { if (state !== 'playing') return; if (player.lane < 1)  { player.lane++; sfxLane(); } }
+function doJump() {
+  if (state !== 'playing') return;
+  if (player.y <= player.support + 0.01 && player.sliding <= 0) { player.vy = JUMP_V; sfxJump(); }
+  else if (player.sliding > 0) { player.sliding = 0; player.vy = JUMP_V; sfxJump(); }
+}
+function doSlide() {
+  if (state !== 'playing') return;
+  if (player.y > 0.01) { player.vy = -14; } // 空中下壓快速落地
+  player.sliding = SLIDE_TIME;
+  sfxSlide();
+}
+
+window.addEventListener('keydown', e => {
+  if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key)) e.preventDefault();
+  ensureAudio();
+  if (state === 'menu' && (e.key === ' ' || e.key === 'Enter')) { startGame(); return; }
+  if (state === 'dead' && deadTimer > 0.9 && (e.key === ' ' || e.key === 'Enter')) { startGame(); return; }
+  switch (e.key) {
+    case 'ArrowLeft': case 'a': case 'A': if (!e.repeat) doLeft(); break;
+    case 'ArrowRight': case 'd': case 'D': if (!e.repeat) doRight(); break;
+    case 'ArrowUp': case 'w': case 'W': case ' ': if (!e.repeat) doJump(); break;
+    case 'ArrowDown': case 's': case 'S':
+      slideHeld = true;
+      if (!e.repeat) doSlide();
+      break;
+  }
+});
+
+window.addEventListener('keyup', e => {
+  if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+    slideHeld = false;
+    // 鬆開蹲下鍵：立即起身，零延遲
+    if (state === 'playing' && player.sliding > 0) player.sliding = 0;
+  }
+});
+
+// 觸控滑動
+let slideHeld = false; // 蹲下鍵是否按住（按住持續蹲滑，鬆開立即起身）
+let touchStartX = 0, touchStartY = 0, touchStartT = 0;
+window.addEventListener('touchstart', e => {
+  ensureAudio();
+  const t = e.changedTouches[0];
+  touchStartX = t.clientX; touchStartY = t.clientY; touchStartT = performance.now();
+}, { passive: true });
+window.addEventListener('touchend', e => {
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStartX;
+  const dy = t.clientY - touchStartY;
+  const adx = Math.abs(dx), ady = Math.abs(dy);
+  const quick = performance.now() - touchStartT < 600;
+  if (!quick) return;
+  if (Math.max(adx, ady) < 24) {
+    // 輕點：跳躍（選單/死亡畫面由按鈕處理）
+    if (state === 'playing') doJump();
+    return;
+  }
+  if (adx > ady) { dx > 0 ? doRight() : doLeft(); }
+  else { dy < 0 ? doJump() : doSlide(); }
+}, { passive: true });
+
+document.getElementById('startBtn').addEventListener('click', () => { ensureAudio(); startGame(); });
+document.getElementById('retryBtn').addEventListener('click', () => { ensureAudio(); startGame(); });
+
+/* =============================================================
+ *  遊戲流程
+ * ============================================================= */
+const hud = document.getElementById('hud');
+const hudScore = document.getElementById('hudScore');
+const hudCoins = document.getElementById('hudCoins');
+const menuOverlay = document.getElementById('menuOverlay');
+const deadOverlay = document.getElementById('deadOverlay');
+document.getElementById('menuHi').textContent = highScore > 0 ? `歷史最高分：${highScore}` : '';
+
+function startGame() {
+  state = 'playing';
+  dist = 0; elapsed = 0; coinCount = 0; score = 0;
+  speed = 11; timeScale = 1; deadTimer = 0; shakeAmt = 0;
+  player.lane = 0; player.x = 0; player.y = 0; player.vy = 0;
+  player.sliding = 0; player.runPhase = 0; player.deadSpin = 0; player.support = 0;
+  obstacles = []; coins = []; particles = [];
+  distSinceWave = 0; nextWaveGap = 20;
+  initScenery();
+  menuOverlay.classList.add('hidden');
+  deadOverlay.classList.add('hidden');
+  hud.style.display = 'flex';
+}
+
+function die() {
+  state = 'dead';
+  deadTimer = 0;
+  timeScale = 0.2;
+  shakeAmt = 14;
+  sfxCrash();
+  // 撞擊粒子
+  for (let i = 0; i < 24; i++) {
+    particles.push({
+      x: player.x + (Math.random() - 0.5) * 0.8,
+      y: 0.8 + Math.random() * 1.2,
+      z: Z_PLAYER,
+      vx: (Math.random() - 0.5) * 6,
+      vy: 2 + Math.random() * 6,
+      life: 0.7 + Math.random() * 0.5,
+      color: Math.random() < 0.5 ? '#ffd35c' : '#ff7b4d',
+      size: 0.08 + Math.random() * 0.1,
+    });
+  }
+  score = Math.floor(dist) + coinCount * 10;
+  const isRecord = score > highScore;
+  if (isRecord) {
+    highScore = score;
+    localStorage.setItem(HS_KEY, String(highScore));
+  }
+  document.getElementById('finalScore').textContent = score;
+  const hiEl = document.getElementById('finalHi');
+  hiEl.innerHTML = isRecord
+    ? '<span class="new-record">🎉 新紀錄！</span>'
+    : `歷史最高分：${highScore}`;
+  setTimeout(() => {
+    deadOverlay.classList.remove('hidden');
+    document.getElementById('menuHi').textContent = `歷史最高分：${highScore}`;
+  }, 900);
+}
+
+/* =============================================================
+ *  更新邏輯
+ * ============================================================= */
+function update(dt) {
+  // 死亡慢動作 & 震動衰減
+  if (state === 'dead') {
+    deadTimer += dt;
+    timeScale = Math.max(0.05, timeScale - dt * 0.3);
+  }
+  shakeAmt *= Math.pow(0.001, dt);
+  if (shakeAmt < 0.3) shakeAmt = 0;
+  shakeX = (Math.random() - 0.5) * shakeAmt;
+  shakeY = (Math.random() - 0.5) * shakeAmt;
+
+  const wdt = dt * timeScale; // 世界時間
+  clouds.forEach(c => { c.x = (c.x + c.spd * wdt) % 1.2; });
+
+  if (state !== 'playing' && state !== 'dead') return;
+
+  // 前進
+  if (state === 'playing') {
+    elapsed += dt;
+    speed = 11 + Math.min(17, elapsed * 0.32);
+  }
+  const move = speed * wdt;
+  dist += state === 'playing' ? move : 0;
+
+  if (state !== 'playing') player.deadSpin += dt * 3;
+
+  // 生成障礙
+  distSinceWave += move;
+  if (state === 'playing' && distSinceWave >= nextWaveGap) {
+    distSinceWave = 0;
+    nextWaveGap = 14 + Math.random() * 12 + speed * 0.25;
+    spawnWave();
+  }
+
+  // 物件前移（z 遞減）
+  for (const o of obstacles) o.z -= move;
+  for (const c of coins) c.z -= move;
+  for (const b of buildings) {
+    b.z -= move;
+    if (b.z < -3) {
+      Object.assign(b, makeBuilding(Z_SPAWN + Math.random() * 8));
+    }
+  }
+  obstacles = obstacles.filter(o => o.z + o.depth > -2);
+  coins = coins.filter(c => !c.taken && c.z > -2);
+
+  // ---- 玩家（腳下支撐：地面或火車頂）----
+  const pz0 = Z_PLAYER - 0.35, pz1 = Z_PLAYER + 0.35;
+  if (state === 'playing') {
+    let support = 0;
+    for (const o of obstacles) {
+      if (o.type !== 'train') continue;
+      if (o.z > pz1 || o.z + o.depth < pz0) continue;
+      if (Math.abs(player.x - o.lane * LANE_W) > LANE_W * 0.55) continue;
+      if (player.y >= TRAIN_H - LAND_EPS) support = TRAIN_H;
+    }
+    player.support = support;
+
+    const targetX = player.lane * LANE_W;
+    player.x += (targetX - player.x) * Math.min(1, dt * 11);
+    if (player.y > support || player.vy > 0) {
+      player.y += player.vy * dt;
+      player.vy -= GRAVITY * dt;
+      if (player.y <= support && player.vy <= 0) {
+        // 著地：落得越重，灰塵越多、聲音越明顯
+        if (player.vy < -4) {
+          tone(140, 70, 0.09, 'triangle', 0.07);
+          const n = Math.min(8, Math.round(-player.vy * 0.8));
+          for (let i = 0; i < n; i++) {
+            particles.push({
+              x: player.x + (Math.random() - 0.5) * 0.7,
+              y: support + 0.05, z: Z_PLAYER,
+              vx: (Math.random() - 0.5) * 3,
+              vy: 0.5 + Math.random() * 1.5,
+              life: 0.25 + Math.random() * 0.2,
+              color: 'rgba(200,190,210,.8)', size: 0.05 + Math.random() * 0.05,
+            });
+          }
+        }
+        player.y = support; player.vy = 0;
+      }
+    } else if (player.y < support) {
+      player.y = Math.min(support, player.y + dt * 20); // 僅 LAND_EPS 內的貼齊微調
+    }
+    // 按住蹲下鍵持續蹲滑；觸控觸發則照計時器自動起身
+    if (player.sliding > 0) player.sliding = slideHeld ? SLIDE_TIME : player.sliding - dt;
+    player.runPhase += dt * (8 + speed * 0.35);
+  }
+
+  // 粒子
+  for (const p of particles) {
+    p.life -= dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy -= 12 * dt;
+    p.z -= move * 0.3;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  if (state !== 'playing') return;
+
+  // ---- 碰撞判定 ----
+  const pH = player.sliding > 0 ? SLIDE_H : PLAYER_H;
+  const pTop = player.y + pH;
+  for (const o of obstacles) {
+    if (o.z > pz1 || o.z + o.depth < pz0) continue;
+    if (Math.abs(player.x - o.lane * LANE_W) > LANE_W * 0.55) continue;
+    let hit = false;
+    if (o.type === 'train') hit = player.y < TRAIN_H - LAND_EPS;                  // 高於車頂＝自然飛越後落上去
+    else if (o.type === 'barrier') hit = player.y < 0.95;                          // 沒跳夠高
+    else if (o.type === 'overhang') hit = pTop > 1.35 && player.support === 0;     // 沒下滑（車頂上不判）
+    if (hit) { die(); return; }
+  }
+
+  // ---- 金幣收集 ----
+  for (const c of coins) {
+    if (c.taken || c.z > pz1 + 0.2 || c.z < pz0 - 0.2) continue;
+    if (Math.abs(player.x - c.lane * LANE_W) > LANE_W * 0.5) continue;
+    if (c.y > player.y - 0.25 && c.y < player.y + pH + 0.25) {
+      c.taken = true;
+      coinCount++;
+      sfxCoin();
+      for (let i = 0; i < 6; i++) {
+        particles.push({
+          x: c.lane * LANE_W, y: c.y, z: c.z,
+          vx: (Math.random() - 0.5) * 4,
+          vy: 1 + Math.random() * 4,
+          life: 0.35 + Math.random() * 0.25,
+          color: '#ffe27a', size: 0.06 + Math.random() * 0.06,
+        });
+      }
+    }
+  }
+
+  score = Math.floor(dist) + coinCount * 10;
+  hudScore.textContent = score;
+  hudCoins.textContent = coinCount;
+}
+
+/* =============================================================
+ *  繪製
+ * ============================================================= */
+function drawSky() {
+  const g = ctx.createLinearGradient(0, 0, 0, horizonY() * 1.35);
+  g.addColorStop(0, '#2b1a5e');
+  g.addColorStop(0.55, '#6a3d8f');
+  g.addColorStop(0.85, '#d96a6a');
+  g.addColorStop(1, '#f5a55f');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, horizonY() + 2);
+
+  // 夕陽
+  const sunX = W * 0.5, sunY = horizonY() * 0.92, sunR = Math.min(W, H) * 0.09;
+  const sg = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR * 2.4);
+  sg.addColorStop(0, 'rgba(255,220,140,.95)');
+  sg.addColorStop(0.35, 'rgba(255,170,90,.55)');
+  sg.addColorStop(1, 'rgba(255,150,80,0)');
+  ctx.fillStyle = sg;
+  ctx.fillRect(sunX - sunR * 2.4, sunY - sunR * 2.4, sunR * 4.8, sunR * 4.8);
+  ctx.fillStyle = '#ffdf9e';
+  ctx.beginPath(); ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2); ctx.fill();
+
+  // 雲
+  ctx.fillStyle = 'rgba(255,235,220,.28)';
+  for (const c of clouds) {
+    const cx = (c.x * 1.2 - 0.1) * W, cy = c.y * H, cw = c.w * W;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, cw, cw * 0.28, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx - cw * 0.5, cy + cw * 0.08, cw * 0.55, cw * 0.2, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx + cw * 0.5, cy + cw * 0.1, cw * 0.5, cw * 0.18, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 遠景天際線剪影（固定，用偽隨機）
+  ctx.fillStyle = '#241b4a';
+  const hy = horizonY();
+  let x = 0, i = 0;
+  while (x < W) {
+    const rnd = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+    const bw = 30 + rnd * 70;
+    const bh = 20 + (Math.abs(Math.sin(i * 78.233) * 12345.678) % 1) * H * 0.09;
+    ctx.fillRect(x, hy - bh, bw, bh + 2);
+    x += bw + 4;
+    i++;
+  }
+}
+
+function drawGroundAndRoad() {
+  const hy = horizonY();
+  // 兩側地面
+  const gg = ctx.createLinearGradient(0, hy, 0, H);
+  gg.addColorStop(0, '#3d2f63');
+  gg.addColorStop(1, '#241a45');
+  ctx.fillStyle = gg;
+  ctx.fillRect(0, hy, W, H - hy);
+
+  // 路面（從遠到近的梯形）
+  const zN = -0.8, zF = Z_SPAWN;
+  const nL = project(-ROAD_HALF, zN), nR = project(ROAD_HALF, zN);
+  const fL = project(-ROAD_HALF, zF), fR = project(ROAD_HALF, zF);
+  const rg = ctx.createLinearGradient(0, hy, 0, H);
+  rg.addColorStop(0, '#4a4460');
+  rg.addColorStop(1, '#5a5470');
+  ctx.fillStyle = rg;
+  ctx.beginPath();
+  ctx.moveTo(fL.x, fL.y); ctx.lineTo(fR.x, fR.y);
+  ctx.lineTo(nR.x, nR.y); ctx.lineTo(nL.x, nL.y);
+  ctx.closePath(); ctx.fill();
+
+  // 路緣
+  ctx.strokeStyle = '#8f86a8';
+  ctx.lineWidth = Math.max(1.5, ppu0 * 0.05);
+  for (const ex of [-ROAD_HALF, ROAD_HALF]) {
+    const n = project(ex, zN), f = project(ex, zF);
+    ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(n.x, n.y); ctx.stroke();
+  }
+
+  // 跑道分隔虛線（隨距離捲動）
+  ctx.strokeStyle = 'rgba(255,255,255,.5)';
+  const seg = 3.2, dash = 1.6;
+  const off = dist % seg;
+  for (const lx of [-LANE_W * 0.5, LANE_W * 0.5]) {
+    for (let z = -off; z < Z_SPAWN; z += seg) {
+      const z0 = Math.max(z, zN), z1 = Math.min(z + dash, Z_SPAWN);
+      if (z1 <= z0) continue;
+      const a = project(lx, z0), b = project(lx, z1);
+      ctx.lineWidth = Math.max(1, a.s * 0.06);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+  }
+
+  // 橫向速度條紋
+  ctx.strokeStyle = 'rgba(255,255,255,.07)';
+  const seg2 = 6.5;
+  const off2 = dist % seg2;
+  for (let z = -off2; z < Z_SPAWN; z += seg2) {
+    if (z < zN) continue;
+    const a = project(-ROAD_HALF, z), b = project(ROAD_HALF, z);
+    ctx.lineWidth = Math.max(1, a.s * 0.05);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+}
+
+// 3D 方塊：中心 x、半寬、高、z 起點、深度
+function drawBox3D(xc, halfW, h, z0, depth, faceColor, sideColor, topColor) {
+  const fBL = project(xc - halfW, z0), fBR = project(xc + halfW, z0);
+  const bBL = project(xc - halfW, z0 + depth), bBR = project(xc + halfW, z0 + depth);
+  const fT = fBL.s * h, bT = bBL.s * h;
+
+  // 頂面
+  ctx.fillStyle = topColor;
+  ctx.beginPath();
+  ctx.moveTo(fBL.x, fBL.y - fT); ctx.lineTo(fBR.x, fBR.y - fT);
+  ctx.lineTo(bBR.x, bBR.y - bT); ctx.lineTo(bBL.x, bBL.y - bT);
+  ctx.closePath(); ctx.fill();
+
+  // 可見側面（朝向畫面中心那側）
+  ctx.fillStyle = sideColor;
+  if (xc > 0.3) {
+    ctx.beginPath();
+    ctx.moveTo(fBL.x, fBL.y); ctx.lineTo(fBL.x, fBL.y - fT);
+    ctx.lineTo(bBL.x, bBL.y - bT); ctx.lineTo(bBL.x, bBL.y);
+    ctx.closePath(); ctx.fill();
+  } else if (xc < -0.3) {
+    ctx.beginPath();
+    ctx.moveTo(fBR.x, fBR.y); ctx.lineTo(fBR.x, fBR.y - fT);
+    ctx.lineTo(bBR.x, bBR.y - bT); ctx.lineTo(bBR.x, bBR.y);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // 正面
+  ctx.fillStyle = faceColor;
+  ctx.fillRect(fBL.x, fBL.y - fT, fBR.x - fBL.x, fT);
+  return { fBL, fBR, fT };
+}
+
+function shade(hex, f) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  r = Math.min(255, Math.max(0, Math.round(r * f)));
+  g = Math.min(255, Math.max(0, Math.round(g * f)));
+  b = Math.min(255, Math.max(0, Math.round(b * f)));
+  return `rgb(${r},${g},${b})`;
+}
+
+function drawBuilding(b) {
+  if (b.z < -1 || b.z > Z_SPAWN) return;
+  const face = drawBox3D(b.x, b.w / 2, b.h, b.z, 2.5, b.color, shade(b.color, 0.75), shade(b.color, 1.25));
+  // 窗戶光點
+  if (face.fT > 14) {
+    ctx.fillStyle = 'rgba(255,214,120,.55)';
+    const cols = 3, rows = Math.min(8, Math.floor(face.fT / 12));
+    const wRect = face.fBR.x - face.fBL.x;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const rnd = Math.abs(Math.sin((b.win * 100 + r * 7 + c * 13) * 9.17) * 437.585) % 1;
+        if (rnd < 0.45) continue;
+        ctx.fillRect(
+          face.fBL.x + wRect * (0.15 + c * 0.3),
+          face.fBL.y - face.fT + face.fT * (0.1 + r * 0.11),
+          wRect * 0.14, face.fT * 0.06
+        );
+      }
+    }
+  }
+}
+
+function drawObstacle(o) {
+  if (o.z + o.depth < -1 || o.z > Z_SPAWN) return;
+  const lx = o.lane * LANE_W;
+  if (o.type === 'train') {
+    const c = o.color;
+    const face = drawBox3D(lx, LANE_W * 0.46, TRAIN_H, Math.max(o.z, -0.5), o.depth - Math.max(0, -0.5 - o.z), c, shade(c, 0.72), shade(c, 1.2));
+    // 車頭窗與車燈
+    const w = face.fBR.x - face.fBL.x, t = face.fT;
+    if (t > 10) {
+      ctx.fillStyle = 'rgba(30,30,60,.85)';
+      ctx.fillRect(face.fBL.x + w * 0.12, face.fBL.y - t * 0.92, w * 0.76, t * 0.3);
+      ctx.fillStyle = '#ffe9a8';
+      ctx.beginPath();
+      ctx.arc(face.fBL.x + w * 0.22, face.fBL.y - t * 0.18, Math.max(2, w * 0.06), 0, Math.PI * 2);
+      ctx.arc(face.fBL.x + w * 0.78, face.fBL.y - t * 0.18, Math.max(2, w * 0.06), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.25)';
+      ctx.fillRect(face.fBL.x, face.fBL.y - t * 0.55, w, t * 0.06);
+    }
+  } else if (o.type === 'barrier') {
+    const face = drawBox3D(lx, LANE_W * 0.42, 1.0, o.z, o.depth, '#e0dede', '#b9b4b4', '#f2f0f0');
+    // 紅白斜紋
+    const w = face.fBR.x - face.fBL.x, t = face.fT;
+    if (t > 6) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(face.fBL.x, face.fBL.y - t, w, t);
+      ctx.clip();
+      ctx.fillStyle = '#e2503f';
+      const sw = w / 4;
+      for (let i = -1; i < 5; i += 2) {
+        ctx.beginPath();
+        ctx.moveTo(face.fBL.x + i * sw, face.fBL.y);
+        ctx.lineTo(face.fBL.x + (i + 1) * sw, face.fBL.y);
+        ctx.lineTo(face.fBL.x + (i + 2) * sw, face.fBL.y - t);
+        ctx.lineTo(face.fBL.x + (i + 1) * sw, face.fBL.y - t);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
+  } else if (o.type === 'overhang') {
+    // 兩根柱子 + 上方橫板（下方留下滑空間）
+    const p = project(lx, o.z);
+    const postH = 2.6, gap = 1.35;
+    drawBox3D(lx - LANE_W * 0.42, 0.09, postH, o.z, o.depth, '#8a92a8', '#6d7488', '#a8afc2');
+    drawBox3D(lx + LANE_W * 0.42, 0.09, postH, o.z, o.depth, '#8a92a8', '#6d7488', '#a8afc2');
+    // 橫板（位於 gap 之上）
+    const bL = project(lx - LANE_W * 0.5, o.z), bR = project(lx + LANE_W * 0.5, o.z);
+    const yBot = p.y - p.s * gap, yTop = p.y - p.s * (postH - 0.1);
+    ctx.fillStyle = '#f0b429';
+    ctx.fillRect(bL.x, yTop, bR.x - bL.x, yBot - yTop);
+    ctx.fillStyle = 'rgba(40,30,10,.8)';
+    const th = (yBot - yTop);
+    if (th > 8) {
+      ctx.font = `bold ${Math.max(8, th * 0.5)}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('▼ 下滑 ▼', (bL.x + bR.x) / 2, (yTop + yBot) / 2);
+    }
+  }
+}
+
+function drawCoin(c) {
+  if (c.taken || c.z < -1 || c.z > Z_SPAWN) return;
+  const p = project(c.lane * LANE_W, c.z);
+  const r = p.s * 0.32;
+  if (r < 1) return;
+  const cy = p.y - p.s * c.y;
+  const spin = Math.cos(dist * 1.8 + c.z * 0.9);
+  ctx.save();
+  ctx.translate(p.x, cy);
+  ctx.scale(Math.max(0.15, Math.abs(spin)), 1);
+  const g = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 0, 0, 0, r);
+  g.addColorStop(0, '#fff3b0');
+  g.addColorStop(0.6, '#f7c531');
+  g.addColorStop(1, '#c98d0a');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#9a6c00';
+  ctx.lineWidth = Math.max(1, r * 0.12);
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+  // 陰影
+  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.beginPath(); ctx.ellipse(p.x, p.y, r * 0.8, r * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawPlayer() {
+  const p = project(player.x, Z_PLAYER);
+  const u = p.s; // 每世界單位像素
+  const footY = p.y - player.y * u;
+  const slide = player.sliding > 0;
+  const dead = state === 'dead';
+
+  // 影子（落在腳下支撐面：地面或車頂）
+  const shBaseY = p.y - player.support * u;
+  const shScale = Math.max(0.35, 1 - (player.y - player.support) * 0.35);
+  ctx.fillStyle = 'rgba(0,0,0,.3)';
+  ctx.beginPath();
+  ctx.ellipse(p.x, shBaseY + u * 0.03, u * 0.5 * shScale, u * 0.13 * shScale, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.save();
+  ctx.translate(p.x, footY);
+  if (dead) ctx.rotate(Math.min(1.4, player.deadSpin));
+  const lean = (player.lane * LANE_W - player.x) * 0.12;
+  ctx.rotate(lean);
+
+  const sw = Math.sin(player.runPhase);        // 手腳擺動
+  const bodyH = slide ? SLIDE_H : PLAYER_H;
+  const hipY = -bodyH * 0.48 * u;
+  const shoulderY = -bodyH * 0.82 * u;
+  const headR = 0.21 * u;
+
+  ctx.lineCap = 'round';
+
+  // 腿
+  ctx.strokeStyle = '#28437a';
+  ctx.lineWidth = u * 0.14;
+  if (slide) {
+    ctx.beginPath();
+    ctx.moveTo(-u * 0.1, hipY); ctx.lineTo(-u * 0.3, -u * 0.05);
+    ctx.moveTo(u * 0.1, hipY); ctx.lineTo(u * 0.45, -u * 0.08);
+    ctx.stroke();
+  } else {
+    const legSwing = player.y > 0.05 ? 0.5 : sw; // 空中收腿
+    ctx.beginPath();
+    ctx.moveTo(-u * 0.08, hipY);
+    ctx.lineTo(-u * 0.08 - legSwing * u * 0.18, hipY * 0.5);
+    ctx.lineTo(-u * 0.08 - legSwing * u * 0.28, player.y > 0.05 ? hipY * 0.35 : 0);
+    ctx.moveTo(u * 0.08, hipY);
+    ctx.lineTo(u * 0.08 + legSwing * u * 0.18, hipY * 0.5);
+    ctx.lineTo(u * 0.08 + legSwing * u * 0.28, player.y > 0.05 ? hipY * 0.35 : 0);
+    ctx.stroke();
+  }
+
+  // 身體（連帽衫）
+  ctx.fillStyle = '#f59e2c';
+  const bw = u * 0.42;
+  ctx.beginPath();
+  if (slide) {
+    ctx.ellipse(0, hipY * 0.85, bw * 0.75, -hipY * 0.62, 0, 0, Math.PI * 2);
+  } else {
+    ctx.moveTo(-bw / 2, hipY);
+    ctx.quadraticCurveTo(-bw * 0.62, (hipY + shoulderY) / 2, -bw * 0.42, shoulderY);
+    ctx.quadraticCurveTo(0, shoulderY - u * 0.1, bw * 0.42, shoulderY);
+    ctx.quadraticCurveTo(bw * 0.62, (hipY + shoulderY) / 2, bw / 2, hipY);
+    ctx.closePath();
+  }
+  ctx.fill();
+  // 背帶（背包）
+  if (!slide) {
+    ctx.strokeStyle = '#c97a12';
+    ctx.lineWidth = u * 0.06;
+    ctx.beginPath();
+    ctx.moveTo(-bw * 0.22, shoulderY); ctx.lineTo(-bw * 0.3, hipY);
+    ctx.moveTo(bw * 0.22, shoulderY); ctx.lineTo(bw * 0.3, hipY);
+    ctx.stroke();
+  }
+
+  // 手臂
+  ctx.strokeStyle = '#f59e2c';
+  ctx.lineWidth = u * 0.11;
+  if (!slide) {
+    ctx.beginPath();
+    ctx.moveTo(-bw * 0.42, shoulderY + u * 0.04);
+    ctx.lineTo(-bw * 0.42 - u * 0.1, shoulderY + u * 0.26 - sw * u * 0.14);
+    ctx.moveTo(bw * 0.42, shoulderY + u * 0.04);
+    ctx.lineTo(bw * 0.42 + u * 0.1, shoulderY + u * 0.26 + sw * u * 0.14);
+    ctx.stroke();
+  }
+
+  // 頭 + 帽子
+  const headY = slide ? hipY * 1.15 - headR : shoulderY - headR * 0.85;
+  ctx.fillStyle = '#e8b98a';
+  ctx.beginPath(); ctx.arc(0, headY, headR, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#d64545';
+  ctx.beginPath(); ctx.arc(0, headY - headR * 0.15, headR * 1.02, Math.PI, 0); ctx.fill();
+  ctx.fillRect(-headR * 1.02, headY - headR * 0.3, headR * 2.04, headR * 0.28);
+
+  ctx.restore();
+}
+
+function drawParticle(pt) {
+  const p = project(pt.x, pt.z);
+  ctx.globalAlpha = Math.max(0, Math.min(1, pt.life * 2));
+  ctx.fillStyle = pt.color;
+  const r = Math.max(1.2, p.s * pt.size);
+  ctx.beginPath();
+  ctx.arc(p.x, p.y - p.s * pt.y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function render() {
+  drawSky();
+  drawGroundAndRoad();
+
+  // 所有世界物件按 z 由遠到近繪製
+  const items = [];
+  for (const b of buildings) items.push({ z: b.z, kind: 'b', ref: b });
+  for (const o of obstacles) {
+    let sz = o.z + o.depth * 0.5;
+    // 車身跨越玩家的火車要先畫（視為較遠），玩家才能站在車頂上
+    if (o.type === 'train' && o.z < Z_PLAYER) sz = Math.max(sz, Z_PLAYER + 0.5);
+    items.push({ z: sz, kind: 'o', ref: o });
+  }
+  for (const c of coins) items.push({ z: c.z, kind: 'c', ref: c });
+  items.push({ z: Z_PLAYER, kind: 'p', ref: null });
+  for (const pt of particles) items.push({ z: pt.z, kind: 'pt', ref: pt });
+  items.sort((a, b) => b.z - a.z);
+
+  for (const it of items) {
+    if (it.kind === 'b') drawBuilding(it.ref);
+    else if (it.kind === 'o') drawObstacle(it.ref);
+    else if (it.kind === 'c') drawCoin(it.ref);
+    else if (it.kind === 'p') { if (state !== 'menu') drawPlayer(); }
+    else drawParticle(it.ref);
+  }
+
+  // 速度感暗角
+  const vg = ctx.createRadialGradient(W / 2, H * 0.55, Math.min(W, H) * 0.45, W / 2, H * 0.55, Math.max(W, H) * 0.85);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(10,5,25,.45)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, W, H);
+}
+
+/* =============================================================
+ *  主迴圈
+ * ============================================================= */
+let lastT = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+// 選單背景也讓場景緩慢移動
+setInterval(() => {
+  if (state === 'menu') {
+    dist += 0.08;
+    for (const b of buildings) {
+      b.z -= 0.08;
+      if (b.z < -3) Object.assign(b, makeBuilding(Z_SPAWN + Math.random() * 8));
+    }
+  }
+}, 16);
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
