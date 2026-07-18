@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>遊戲小閣 · LUDI</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0b1020;
+    --card: #141b33;
+    --card-hover: #1b2444;
+    --ink: #e8e6df;
+    --ink-dim: #9aa3bf;
+    --gold: #d4b26a;
+    --line: #2a3457;
+  }
+
+  body {
+    min-height: 100vh;
+    background: radial-gradient(ellipse at 50% -20%, #1a2547 0%, var(--bg) 60%);
+    color: var(--ink);
+    font-family: "Noto Serif TC", "PMingLiU", Georgia, serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4rem 1.5rem 3rem;
+    overflow-x: hidden;
+  }
+
+  .stars {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .stars span {
+    position: absolute;
+    width: 2px; height: 2px;
+    border-radius: 50%;
+    background: #fff;
+    opacity: .6;
+    animation: twinkle 3s ease-in-out infinite;
+  }
+  @keyframes twinkle {
+    0%, 100% { opacity: .15; }
+    50% { opacity: .7; }
+  }
+
+  header { text-align: center; z-index: 1; }
+
+  .eyebrow {
+    font-size: .8rem;
+    letter-spacing: .5em;
+    text-indent: .5em;
+    color: var(--gold);
+    text-transform: uppercase;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 6vw, 3rem);
+    font-weight: 600;
+    letter-spacing: .3em;
+    text-indent: .3em;
+    margin: .6rem 0 .4rem;
+  }
+
+  .subtitle {
+    color: var(--ink-dim);
+    font-size: .95rem;
+    letter-spacing: .15em;
+  }
+
+  .divider {
+    width: 120px;
+    margin: 2rem auto 2.5rem;
+    border: none;
+    border-top: 1px solid var(--line);
+    position: relative;
+  }
+  .divider::after {
+    content: "✦";
+    position: absolute;
+    top: -.7em; left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg);
+    padding: 0 .6em;
+    color: var(--gold);
+    font-size: .8rem;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1.4rem;
+    width: 100%;
+    max-width: 860px;
+    z-index: 1;
+  }
+
+  .card {
+    display: block;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.6rem 1.5rem 1.4rem;
+    text-decoration: none;
+    color: var(--ink);
+    transition: transform .25s ease, background .25s ease, border-color .25s ease;
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    background: var(--card-hover);
+    border-color: var(--gold);
+  }
+
+  .card .icon { font-size: 1.8rem; }
+
+  .card h2 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: .7rem 0 .45rem;
+    letter-spacing: .08em;
+  }
+
+  .card p {
+    font-size: .88rem;
+    line-height: 1.7;
+    color: var(--ink-dim);
+  }
+
+  .card .go {
+    display: inline-block;
+    margin-top: 1rem;
+    font-size: .8rem;
+    letter-spacing: .2em;
+    color: var(--gold);
+  }
+
+  footer {
+    margin-top: 3.5rem;
+    color: var(--ink-dim);
+    font-size: .8rem;
+    letter-spacing: .12em;
+    z-index: 1;
+    text-align: center;
+  }
+  footer a { color: var(--gold); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+  <div class="stars" id="stars"></div>
+
+  <header>
+    <p class="eyebrow">Ludi · Interactive Toys</p>
+    <h1>遊戲小閣</h1>
+    <p class="subtitle">閒暇時鍛造的網頁小玩具,皆可直接遊玩</p>
+  </header>
+
+  <hr class="divider">
+
+  <main class="grid">
+    <a class="card" href="cat-stargazing.html">
+      <span class="icon">🐈‍⬛</span>
+      <h2>星夜下的貓</h2>
+      <p>陪一隻貓靜靜坐在屋頂上,仰望流轉的星空。一段放鬆的互動小品。</p>
+      <span class="go">進入 →</span>
+    </a>
+
+    <a class="card" href="rain-sim.html">
+      <span class="icon">🌧</span>
+      <h2>雨夜模擬器</h2>
+      <p>聆聽雨聲、看雨滴落在窗上。可調節雨勢的沉浸式雨夜場景。</p>
+      <span class="go">進入 →</span>
+    </a>
+
+    <a class="card" href="subway-run.html">
+      <span class="icon">🏃</span>
+      <h2>城市酷跑 City Rush</h2>
+      <p>在城市街道間奔跑、跳躍、閃避障礙,挑戰你的最高分。</p>
+      <span class="go">進入 →</span>
+    </a>
+
+    <a class="card" href="subway-run-3d.html">
+      <span class="icon">🎮</span>
+      <h2>Subway Run 3D — 方塊人</h2>
+      <p>酷跑的 3D 進化版,操控方塊小人在立體軌道上飛馳。</p>
+      <span class="go">進入 →</span>
+    </a>
+  </main>
+
+  <footer>
+    <p><a href="https://github.com/rowing195/html-games">GitHub</a> · rowing195</p>
+  </footer>
+
+  <script>
+    const stars = document.getElementById('stars');
+    for (let i = 0; i < 60; i++) {
+      const s = document.createElement('span');
+      s.style.left = Math.random() * 100 + '%';
+      s.style.top = Math.random() * 100 + '%';
+      s.style.animationDelay = Math.random() * 3 + 's';
+      s.style.transform = 'scale(' + (0.5 + Math.random()) + ')';
+      stars.appendChild(s);
+    }
+  </script>
+</body>
+</html>
