@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>方塊塔防 — Block Defense</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #12141c; font-family: system-ui, "Microsoft JhengHei", sans-serif; }
+  #wrap { position: fixed; inset: 0; display: flex; flex-direction: column; }
+  #game { display: block; flex: 1; width: 100%; min-height: 0; touch-action: none; }
+
+  #hud {
+    display: flex; align-items: center; gap: 14px; padding: 8px 12px;
+    background: #1b1f2c; color: #fff; font-size: 15px; font-weight: 800;
+    user-select: none; letter-spacing: .5px; flex-wrap: wrap;
+  }
+  #hud .sp { flex: 1; }
+  #hud b { font-weight: 800; }
+  #waveBtn {
+    border: 0; border-radius: 999px; padding: 7px 16px; font-size: 15px; font-weight: 800;
+    background: #ffc043; color: #2b2200; cursor: pointer; font-family: inherit;
+  }
+  #waveBtn:disabled { background: #3a4054; color: #8891a8; cursor: default; }
+
+  /* 建塔／升級面板 */
+  /* 面板永遠佔著版面,不隨選取出現/消失——否則 canvas 尺寸會變,
+     格子座標與觸碰判定都要跟著跑掉 */
+  #panel {
+    background: #1b1f2c; color: #fff; padding: 8px; user-select: none;
+    border-top: 2px solid #2b3145; height: 96px; box-sizing: border-box;
+    display: flex; align-items: center;
+  }
+  .shop { display: flex; gap: 6px; width: 100%; }
+  .tcard {
+    flex: 1; background: #262c3d; border: 2px solid #38405a; border-radius: 10px;
+    padding: 7px 4px; text-align: center; cursor: pointer; transition: background .12s, border-color .12s;
+  }
+  .tcard:hover { background: #2f3750; }
+  .tcard.poor { opacity: .42; cursor: default; }
+  .tcard.sel { border-color: #ffc043; background: #3b4260; }
+  .tcard .ic { display: block; width: 22px; height: 22px; margin: 0 auto 5px; border-radius: 3px; }
+  .tcard .nm { display: block; font-size: 13px; font-weight: 800; }
+  .tcard .ds { display: block; font-size: 10px; opacity: .68; margin-top: 2px; line-height: 1.35; }
+  .tcard .pr { display: block; font-size: 12px; font-weight: 800; color: #ffc043; margin-top: 4px; }
+
+  .info { display: flex; align-items: center; gap: 10px; width: 100%; }
+  .info .txt { flex: 1; font-size: 13px; line-height: 1.5; }
+  .info .txt .h { font-size: 15px; font-weight: 800; }
+  .info .txt .s { opacity: .7; font-size: 11px; }
+  .act {
+    border: 0; border-radius: 8px; padding: 9px 13px; font-size: 13px; font-weight: 800;
+    cursor: pointer; font-family: inherit; background: #ffc043; color: #2b2200; white-space: nowrap;
+  }
+  .act.sell { background: #3a4054; color: #cfd6e8; }
+  .act.danger { background: #ff6b6b; color: #2b0000; }
+  .act:disabled { background: #3a4054; color: #8891a8; cursor: default; }
+
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; background: rgba(10,13,22,.82); color: #fff; text-align: center; transition: opacity .25s;
+    user-select: none; padding: 20px; box-sizing: border-box;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .overlay h1 { margin: 0; font-size: clamp(28px, 6vw, 50px); letter-spacing: 2px; }
+  .overlay p { margin: 0; font-size: clamp(13px, 2.6vw, 17px); line-height: 1.85; opacity: .9; max-width: 30em; }
+  .overlay .btn {
+    border: 0; border-radius: 999px; padding: 13px 34px; font-size: 18px; font-weight: 800;
+    background: #ffc043; color: #2b2200; cursor: pointer; font-family: inherit; margin-top: 6px;
+  }
+  .overlay ol { list-style: none; padding: 0; margin: 4px 0 0; width: min(320px, 82vw); font-size: 14px; }
+  .overlay li { display: flex; justify-content: space-between; gap: 8px; padding: 5px 10px; border-radius: 7px; opacity: .82; }
+  .overlay li.me { background: rgba(255,192,67,.19); opacity: 1; font-weight: 800; }
+  .legend { font-size: 12px; opacity: .62; line-height: 1.9; }
+
+  /* 存檔碼 */
+  .linkBtn { background: none; border: 0; color: #ffc043; font: inherit; font-size: 13px;
+             text-decoration: underline; cursor: pointer; padding: 4px; }
+  .save { width: min(370px, 88vw); background: rgba(255,255,255,.07); border-radius: 12px;
+          padding: 12px; display: none; text-align: left; }
+  .save.on { display: block; }
+  .save .lb { font-size: 12px; opacity: .7; margin-bottom: 5px; }
+  .save .code { font-family: ui-monospace, "Consolas", monospace; font-size: 19px; letter-spacing: 2px;
+                background: rgba(0,0,0,.4); padding: 9px; border-radius: 8px; word-break: break-all; }
+  .save input { width: 100%; box-sizing: border-box; font-family: ui-monospace, "Consolas", monospace;
+                font-size: 16px; padding: 9px; border-radius: 8px; border: 2px solid #38405a;
+                background: #141926; color: #fff; letter-spacing: 2px; text-transform: uppercase; }
+  .save .row { display: flex; gap: 8px; margin-top: 8px; }
+  .save .row .act { flex: 1; padding: 10px; }
+  .save .msg { font-size: 12px; margin-top: 9px; min-height: 1.3em; line-height: 1.5; }
+  .save .msg.ok { color: #7de08a; }
+  .save .msg.err { color: #ff8a8a; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <span>❤ <b id="lives">20</b></span>
+    <span style="color:#ffc043">🪙 <b id="gold">0</b></span>
+    <span>波 <b id="wave">0</b></span>
+    <span class="sp"></span>
+    <span style="opacity:.6;font-size:13px">最高 <b id="best">0</b></span>
+    <button id="waveBtn">出擊 ▶</button>
+  </div>
+  <canvas id="game"></canvas>
+  <div id="panel"></div>
+</div>
+
+<div class="overlay" id="menu">
+  <h1>方塊塔防</h1>
+  <p>敵人會沿著軌道走向你的基地。在空地上蓋塔攔下它們。<br>
+     四種塔各有專長,沒有一種能單獨應付所有敵人。</p>
+  <p class="legend">
+    先在下方商店選一種塔,再點地圖空地放置 · 點自己的塔可升級或拆除<br>
+    花錢的動作都會先問過你才執行,不怕點錯<br>
+    按「出擊」才會放出下一波,兩波之間可以慢慢想
+  </p>
+  <button class="btn" id="startBtn">開始防守</button>
+  <button class="linkBtn" data-savetoggle>存檔碼(換裝置用)</button>
+  <div class="save" data-save></div>
+</div>
+
+<div class="overlay hidden" id="over">
+  <h1>基地失守</h1>
+  <p id="finalLine"></p>
+  <ol id="board"></ol>
+  <button class="btn" id="againBtn">再來一次</button>
+  <button class="linkBtn" data-savetoggle>存檔碼(換裝置用)</button>
+  <div class="save" data-save></div>
+</div>
+
+<script>
+'use strict';
+
+/* ============ 數值設定(平衡旋鈕都集中在這裡)============ */
+/* 設計原則:每座塔都要有「別人做不好的事」,而不是誰比較強。
+   gun 通用但破甲差 → armored 逼你蓋 pierce
+   swarm 數量多 → 單體塔來不及打,逼你蓋 splash
+   後期敵人速度快、血厚 → 過路時間不夠,逼你蓋 frost 拉長輸出視窗 */
+const TOWERS = {
+  gun: {
+    name: '機槍塔', color: '#4ea8ff', desc: '高射速單體<br>破甲差',
+    cost: 60, range: 2.6, fireRate: 2.6, dmg: 11, pierce: 2, splash: 0,
+    slowPct: 0, slowDur: 0, bulletSpeed: 13, bulletColor: '#9ed4ff',
+    up: [ { cost: 55, dmg: 22, range: 2.9, fireRate: 3.0 },
+          { cost: 130, dmg: 50, range: 3.2, fireRate: 3.4, pierce: 4 } ]
+  },
+  splash: {
+    name: '爆破塔', color: '#ff8a4e', desc: '範圍濺射<br>射速慢',
+    cost: 95, range: 2.4, fireRate: 1.0, dmg: 22, pierce: 6, splash: 1.3,
+    slowPct: 0, slowDur: 0, bulletSpeed: 8, bulletColor: '#ffb987',
+    up: [ { cost: 85, dmg: 38, splash: 1.55, range: 2.6, fireRate: 1.1 },
+          { cost: 190, dmg: 65, splash: 1.85, range: 2.8, fireRate: 1.25, pierce: 10 } ]
+  },
+  frost: {
+    name: '冰霜塔', color: '#6ee7e0', desc: '範圍減速<br>幾乎不輸出',
+    cost: 75, range: 2.8, fireRate: 1.1, dmg: 3, pierce: 0, splash: 1.5,
+    slowPct: 0.45, slowDur: 1.6, bulletSpeed: 9, bulletColor: '#b6fffb',
+    up: [ { cost: 70, slowPct: 0.58, range: 3.1, dmg: 6 },
+          { cost: 160, slowPct: 0.70, slowDur: 2.2, range: 3.5, dmg: 10 } ]
+  },
+  pierce: {
+    name: '穿甲炮', color: '#c78bff', desc: '慢速高傷<br>無視護甲',
+    cost: 120, range: 3.6, fireRate: 0.6, dmg: 55, pierce: 99, splash: 0,
+    slowPct: 0, slowDur: 0, bulletSpeed: 20, bulletColor: '#e0c4ff',
+    up: [ { cost: 110, dmg: 130, range: 3.9, fireRate: 0.65 },
+          { cost: 240, dmg: 260, range: 4.3, fireRate: 0.8 } ]
+  }
+};
+const TOWER_KEYS = ['gun', 'splash', 'frost', 'pierce'];
+const SELL_RATE = 0.6;   // 拆塔退回已投入總額的比例
+
+/* 敵人原型。armor 是固定減傷,pierce 值高的塔才吃得下 */
+const ENEMIES = {
+  grunt:   { name: '雜兵', hp: 42,  speed: 1.35, armor: 1,  bounty: 4,  size: 0.30, color: '#7de08a' },
+  swarm:   { name: '蟲群', hp: 22,  speed: 2.15, armor: 0,  bounty: 2,  size: 0.21, color: '#ffe066' },
+  armored: { name: '重甲', hp: 105, speed: 0.95, armor: 8,  bounty: 8,  size: 0.35, color: '#9aa7c4' },
+  boss:    { name: '巨獸', hp: 900, speed: 0.72, armor: 12, bounty: 59, size: 0.52, color: '#ff6b6b' }
+};
+
+/* 波次成長曲線。hp/數量隨波數指數成長,靠 waveComp 決定當波組成 */
+const WAVE = {
+  hpGrowth: 1.185,      // 每波血量倍率
+  speedGrowth: 1.011,   // 每波速度倍率(成長很慢,避免後期無法反應)
+  armorGrowth: 1.05,    // 護甲也要成長,否則傷害一升上去固定減傷就形同虛設
+  bountyGrowth: 1.03,
+  baseGold: 190,
+  baseLives: 20,
+  clearBonus: 9,        // 過波獎勵基底
+  clearBonusGrowth: 0.9,// 每波再多給
+  spawnGap: 0.6,        // 同一波內出怪間隔(秒),越短敵人越擠、濺射越有價值
+  bossEvery: 8          // 每 N 波出一次 boss
+};
+
+/* 一波的敵人組成:回傳 [{type, count}]。刻意讓不同敵種輪流當主角。
+   數量成長刻意壓得比血量慢——否則每波擊殺數暴增,收入會線性膨脹,
+   最後變成「錢多到可以蓋滿整張地圖」,資源取捨就消失了。 */
+function waveComp(w) {
+  const out = [];
+  out.push({ type: 'grunt', count: 4 + Math.floor(w * 0.55) });
+  if (w >= 3)  out.push({ type: 'swarm', count: 4 + Math.floor(w * 0.9) });
+  if (w >= 5)  out.push({ type: 'armored', count: 1 + Math.floor((w - 4) * 0.5) });
+  if (w % WAVE.bossEvery === 0) out.push({ type: 'boss', count: Math.ceil(w / WAVE.bossEvery) });
+  return out;
+}
+
+/* ============ 地圖資料(遊戲邏輯只透過這個物件認識地圖)============ */
+/* path 是格子座標的轉折點,敵人沿線段走。可建造格由路徑自動算出。
+   之後要加新地圖,往這個陣列多推一筆即可,不必動任何邏輯。 */
+const MAPS = [
+  {
+    name: '起始車站',
+    cols: 14, rows: 11,
+    path: [[-1, 1.5], [10.5, 1.5], [10.5, 4.5], [2.5, 4.5], [2.5, 7.5], [11.5, 7.5], [11.5, 9.5], [14, 9.5]],
+    startGold: WAVE.baseGold,
+    startLives: WAVE.baseLives
+  }
+];
+
+/* ============ 音效(Web Audio 合成,零素材)============ */
+let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+function tone(freq, ms, vol, type, slideTo) {
+  if (!audioCtx) return;
+  const t0 = audioCtx.currentTime;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = type || 'square';
+  o.frequency.setValueAtTime(freq, t0);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + ms / 1000);
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + ms / 1000);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(t0); o.stop(t0 + ms / 1000);
+}
+
+/* ============ 本機排行榜(localStorage 前五名)============ */
+const BOARD_KEY = 'towerDefenseBoard';
+function loadBoard() {
+  try { return JSON.parse(localStorage.getItem(BOARD_KEY)) || []; } catch (e) { return []; }
+}
+function saveBoard(b) { try { localStorage.setItem(BOARD_KEY, JSON.stringify(b)); } catch (e) {} }
+let bestWave = (loadBoard()[0] || { w: 0 }).w;
+
+/* ============ 存檔碼(跨裝置搬紀錄,純前端、不需要伺服器)============ */
+/* 字母表刻意用 Crockford base32:拿掉 I L O U,手打時就不會把 1 跟 I、0 跟 O 搞混。
+   長度是變動的——只有一筆紀錄時碼很短,滿五筆也才 12 個字。 */
+const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const CODE_PREFIX = 'T';        // 認出這是塔防的碼,貼錯遊戲會被擋下來
+const CODE_WIDTH = 2;           // 每筆紀錄 2 個字(波數上限 1023)
+
+function b32(n, width) {
+  n = Math.max(0, Math.min(Math.round(n), Math.pow(32, width) - 1));
+  let s = '';
+  for (let i = 0; i < width; i++) { s = B32[n % 32] + s; n = Math.floor(n / 32); }
+  return s;
+}
+function unb32(s) {
+  let n = 0;
+  for (const c of s) { const v = B32.indexOf(c); if (v < 0) return -1; n = n * 32 + v; }
+  return n;
+}
+// 加權總和:除了打錯字,連前後兩字對調也驗得出來
+function codeSum(s) {
+  let t = 0;
+  for (let i = 0; i < s.length; i++) t += B32.indexOf(s[i]) * (i + 1);
+  return B32[t % 32];
+}
+function groupCode(s) { return s.replace(/(.{4})/g, '$1-').replace(/-$/, ''); }
+// 手打容錯:小寫、空白、連字號、I/L 打成 1、O 打成 0 都接受
+function normalizeCode(s) {
+  return s.toUpperCase().replace(/[IL]/g, '1').replace(/O/g, '0').replace(/[^0-9A-Z]/g, '');
+}
+
+function exportCode() {
+  let p = '';
+  for (const e of loadBoard().slice(0, 5)) p += b32(e.w, CODE_WIDTH);
+  return groupCode(CODE_PREFIX + p + codeSum(p));
+}
+
+/* 匯入採「合併」而不是覆蓋:兩台裝置的紀錄會併起來取前五名,
+   所以先匯入再玩、或先玩再匯入都不會弄丟東西。 */
+function importCode(raw) {
+  const s = normalizeCode(raw);
+  if (!s) return { ok: false, msg: '請先貼上或輸入存檔碼' };
+  if (s[0] !== CODE_PREFIX) return { ok: false, msg: '這不是「方塊塔防」的存檔碼(開頭應該是 ' + CODE_PREFIX + ')' };
+  const body = s.slice(1);
+  if (body.length < CODE_WIDTH + 1) return { ok: false, msg: '存檔碼太短,可能少打了字' };
+  const p = body.slice(0, -1), ck = body.slice(-1);
+  if (p.length % CODE_WIDTH !== 0) return { ok: false, msg: '長度不對,請確認有沒有漏字或多字' };
+  if (codeSum(p) !== ck) return { ok: false, msg: '檢查碼不符,應該是打錯了某個字' };
+
+  const waves = [];
+  for (let i = 0; i < p.length; i += CODE_WIDTH) {
+    const w = unb32(p.slice(i, i + CODE_WIDTH));
+    if (w < 0) return { ok: false, msg: '存檔碼含有無效字元' };
+    if (w > 0) waves.push(w);
+  }
+  const board = loadBoard();
+  const have = board.map(e => e.w);
+  let added = 0;
+  for (const w of waves) {
+    if (have.indexOf(w) >= 0) continue;      // 同樣波數不重複收,避免重複匯入灌水
+    board.push({ w, d: Date.now() }); have.push(w); added++;
+  }
+  board.sort((a, b) => b.w - a.w);
+  board.length = Math.min(board.length, 5);
+  saveBoard(board);
+  bestWave = board[0] ? board[0].w : 0;
+  return { ok: true, msg: added ? '匯入成功,新增 ' + added + ' 筆,目前最高第 ' + bestWave + ' 波'
+                                : '匯入成功,但這些紀錄你已經有了' };
+}
+
+/* 兩個畫面(開始選單、失守畫面)共用同一組存檔碼介面 */
+function mountSaveUI() {
+  for (const box of document.querySelectorAll('[data-save]')) {
+    box.innerHTML =
+      '<div class="lb">這台裝置的存檔碼(含前 5 名,複製到另一台貼上)</div>' +
+      '<div class="code" data-code></div>' +
+      '<div class="row"><button class="act" data-copy>複製</button></div>' +
+      '<div class="lb" style="margin-top:12px">貼上另一台的存檔碼</div>' +
+      '<input data-in placeholder="例如 T1A2-B3C" autocomplete="off" spellcheck="false">' +
+      '<div class="row"><button class="act sell" data-imp>匯入合併</button></div>' +
+      '<div class="msg" data-msg></div>';
+
+    const msg = box.querySelector('[data-msg]');
+    const say = (text, cls) => { msg.textContent = text; msg.className = 'msg ' + (cls || ''); };
+
+    box.querySelector('[data-copy]').addEventListener('click', async () => {
+      const code = box.querySelector('[data-code]').textContent;
+      try { await navigator.clipboard.writeText(code); say('已複製:' + code, 'ok'); }
+      catch (e) { say('這個瀏覽器不給自動複製,請手動選取上面的碼', 'err'); }
+    });
+    box.querySelector('[data-imp]').addEventListener('click', () => {
+      const r = importCode(box.querySelector('[data-in]').value);
+      say(r.msg, r.ok ? 'ok' : 'err');
+      if (r.ok) { box.querySelector('[data-in]').value = ''; refreshSaveUI(); refreshUI(); }
+    });
+  }
+  for (const btn of document.querySelectorAll('[data-savetoggle]')) {
+    btn.addEventListener('click', () => {
+      const box = btn.parentElement.querySelector('[data-save]');
+      box.classList.toggle('on');
+      if (box.classList.contains('on')) refreshSaveUI();
+    });
+  }
+}
+function refreshSaveUI() {
+  const has = loadBoard().length > 0;
+  for (const el of document.querySelectorAll('[data-code]')) {
+    el.textContent = has ? exportCode() : '還沒有紀錄,先玩一場';
+    el.style.opacity = has ? '1' : '.5';
+  }
+  for (const b of document.querySelectorAll('[data-copy]')) b.disabled = !has;
+}
+
+/* ============ 地圖幾何(從 path 推導出來的東西)============ */
+const map = MAPS[0];
+let segs = [], pathLen = 0;   // 每段:{x0,y0,x1,y1,len,acc}
+function buildGeometry() {
+  segs = []; pathLen = 0;
+  for (let i = 0; i < map.path.length - 1; i++) {
+    const [x0, y0] = map.path[i], [x1, y1] = map.path[i + 1];
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    segs.push({ x0, y0, x1, y1, len, acc: pathLen });
+    pathLen += len;
+  }
+}
+buildGeometry();
+
+/* 走了 d 格之後的位置(格子座標) */
+function posAt(d) {
+  if (d <= 0) return { x: segs[0].x0, y: segs[0].y0 };
+  for (const s of segs) {
+    if (d <= s.acc + s.len) {
+      const t = (d - s.acc) / s.len;
+      return { x: s.x0 + (s.x1 - s.x0) * t, y: s.y0 + (s.y1 - s.y0) * t };
+    }
+  }
+  const l = segs[segs.length - 1];
+  return { x: l.x1, y: l.y1 };
+}
+
+/* 點到路徑的最短距離,用來判斷格子能不能蓋塔 */
+function distToPath(px, py) {
+  let best = Infinity;
+  for (const s of segs) {
+    const dx = s.x1 - s.x0, dy = s.y1 - s.y0;
+    const t = Math.max(0, Math.min(1, ((px - s.x0) * dx + (py - s.y0) * dy) / (s.len * s.len)));
+    best = Math.min(best, Math.hypot(px - (s.x0 + dx * t), py - (s.y0 + dy * t)));
+  }
+  return best;
+}
+
+/* 可建造格:格心離路徑夠遠。開場算一次存成 buildable[y][x] */
+const buildable = [];
+for (let y = 0; y < map.rows; y++) {
+  const row = [];
+  for (let x = 0; x < map.cols; x++) row.push(distToPath(x + 0.5, y + 0.5) > 0.92);
+  buildable.push(row);
+}
+
+/* ============ 遊戲狀態 ============ */
+let state = 'menu';          // menu / playing / dead
+let gold = 0, lives = 0, wave = 0;
+let towers = [], enemies = [], bullets = [], effects = [];
+let spawnQueue = [], spawnTimer = 0, waveActive = false;
+let selected = null;         // {kind:'empty', gx, gy} 或 {kind:'tower', tower}
+let pendingKind = null;      // 已在商店選好、等著點格子放下的塔種
+let confirmAct = null;       // 待確認的花費動作 {kind:'build'|'upgrade'|'sell', ...}
+
+function towerAt(gx, gy) {
+  for (const t of towers) if (t.gx === gx && t.gy === gy) return t;
+  return null;
+}
+
+/* ============ 操作(建塔/升級/拆除)============ */
+function makeTower(kind, gx, gy) {
+  const d = TOWERS[kind];
+  return {
+    kind, gx, gy, x: gx + 0.5, y: gy + 0.5, lvl: 0, spent: d.cost,
+    range: d.range, fireRate: d.fireRate, dmg: d.dmg, pierce: d.pierce,
+    splash: d.splash, slowPct: d.slowPct, slowDur: d.slowDur,
+    cd: 0, angle: -Math.PI / 2
+  };
+}
+function applyUpgrade(t) {
+  const u = TOWERS[t.kind].up[t.lvl];
+  for (const k in u) if (k !== 'cost') t[k] = u[k];
+  t.lvl++; t.spent += u.cost;
+}
+function buildTower(kind, gx, gy) {
+  const d = TOWERS[kind];
+  if (gold < d.cost || !buildable[gy][gx] || towerAt(gx, gy)) return;
+  gold -= d.cost;
+  const t = makeTower(kind, gx, gy);
+  towers.push(t);
+  selected = { kind: 'tower', tower: t };
+  tone(300, 90, 0.06, 'square', 520);
+  refreshUI();
+}
+function upgradeTower(t) {
+  const u = TOWERS[t.kind].up[t.lvl];
+  if (!u || gold < u.cost) return;
+  gold -= u.cost;
+  applyUpgrade(t);
+  tone(480, 130, 0.07, 'triangle', 780);
+  refreshUI();
+}
+function sellTower(t) {
+  gold += Math.floor(t.spent * SELL_RATE);
+  towers.splice(towers.indexOf(t), 1);
+  selected = null;
+  tone(360, 110, 0.05, 'sine', 180);
+  refreshUI();
+}
+
+/* ============ 波次 ============ */
+function startWave() {
+  if (waveActive || state !== 'playing') return;
+  wave++;
+  spawnQueue = [];
+  for (const g of waveComp(wave)) {
+    for (let i = 0; i < g.count; i++) spawnQueue.push(g.type);
+  }
+  // 打散順序,但 boss 一律排最後
+  const bosses = spawnQueue.filter(t => t === 'boss');
+  const rest = spawnQueue.filter(t => t !== 'boss');
+  for (let i = rest.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+  spawnQueue = rest.concat(bosses);
+  spawnTimer = 0;
+  waveActive = true;
+  tone(220, 200, 0.07, 'sawtooth', 340);
+  refreshUI();
+}
+function spawnEnemy(type) {
+  const p = ENEMIES[type];
+  const hpMul = Math.pow(WAVE.hpGrowth, wave - 1);
+  const spMul = Math.pow(WAVE.speedGrowth, wave - 1);
+  const hp = Math.round(p.hp * hpMul);
+  const armor = Math.round(p.armor * Math.pow(WAVE.armorGrowth, wave - 1));
+  enemies.push({
+    type, hp, maxHp: hp,
+    speed: p.speed * spMul, armor, size: p.size, color: p.color,
+    bounty: Math.round(p.bounty * Math.pow(WAVE.bountyGrowth, wave - 1)),
+    d: 0, slowT: 0, slowPct: 0, hitFlash: 0
+  });
+}
+function endWave() {
+  waveActive = false;
+  gold += Math.round(WAVE.clearBonus + wave * WAVE.clearBonusGrowth);
+  tone(520, 220, 0.07, 'triangle', 760);
+  refreshUI();
+}
+
+/* ============ 邏輯更新(與繪製無關)============ */
+function update(dt) {
+  if (state !== 'playing') return;
+
+  // 出怪
+  if (waveActive && spawnQueue.length) {
+    spawnTimer -= dt;
+    while (spawnTimer <= 0 && spawnQueue.length) {
+      spawnEnemy(spawnQueue.shift());
+      spawnTimer += WAVE.spawnGap;
+    }
+  }
+
+  // 敵人前進
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    if (e.slowT > 0) { e.slowT -= dt; if (e.slowT <= 0) e.slowPct = 0; }
+    if (e.hitFlash > 0) e.hitFlash -= dt;
+    e.d += e.speed * (1 - e.slowPct) * dt;
+    if (e.d >= pathLen) {           // 走到底 → 扣命
+      enemies.splice(i, 1);
+      lives--;
+      tone(150, 260, 0.13, 'sawtooth', 60);
+      refreshUI();
+      if (lives <= 0) { die(); return; }
+    }
+  }
+
+  // 塔開火
+  for (const t of towers) {
+    t.cd -= dt;
+    const target = pickTarget(t);
+    if (target) {
+      const p = posAt(target.d);
+      t.angle = Math.atan2(p.y - t.y, p.x - t.x);
+      if (t.cd <= 0) {
+        t.cd = 1 / t.fireRate;
+        fire(t, target);
+      }
+    }
+  }
+
+  // 子彈飛行
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    const tp = b.target && b.target.hp > 0 ? posAt(b.target.d) : b.last;
+    b.last = tp;
+    const dx = tp.x - b.x, dy = tp.y - b.y;
+    const dist = Math.hypot(dx, dy);
+    const step = b.speed * dt;
+    if (dist <= step || dist < 0.05) {
+      b.x = tp.x; b.y = tp.y;
+      impact(b);
+      bullets.splice(i, 1);
+    } else {
+      b.x += dx / dist * step; b.y += dy / dist * step;
+      b.life -= dt;
+      if (b.life <= 0) bullets.splice(i, 1);
+    }
+  }
+
+  // 爆炸特效
+  for (let i = effects.length - 1; i >= 0; i--) {
+    effects[i].t -= dt;
+    if (effects[i].t <= 0) effects.splice(i, 1);
+  }
+
+  // 本波清空
+  if (waveActive && !spawnQueue.length && !enemies.length) endWave();
+}
+
+/* 選目標:射程內走最遠的那隻(最接近基地,威脅最大) */
+function pickTarget(t) {
+  let best = null, bestD = -1;
+  for (const e of enemies) {
+    const p = posAt(e.d);
+    if (Math.hypot(p.x - t.x, p.y - t.y) > t.range) continue;
+    if (e.d > bestD) { bestD = e.d; best = e; }
+  }
+  return best;
+}
+
+function fire(t, target) {
+  bullets.push({
+    x: t.x, y: t.y, target, last: posAt(target.d), speed: t.bulletSpeed || TOWERS[t.kind].bulletSpeed,
+    color: TOWERS[t.kind].bulletColor, dmg: t.dmg, pierce: t.pierce,
+    splash: t.splash, slowPct: t.slowPct, slowDur: t.slowDur, life: 2.5
+  });
+  const f = { gun: 700, splash: 200, frost: 900, pierce: 300 }[t.kind];
+  tone(f, 45, 0.028, t.kind === 'splash' ? 'sawtooth' : 'square');
+}
+
+/* 命中:算實際傷害(護甲被 pierce 抵掉的部分不生效) */
+function damage(e, dmg, pierce) {
+  const armor = Math.max(0, e.armor - pierce);
+  const real = Math.max(1, dmg - armor);
+  e.hp -= real;
+  e.hitFlash = 0.09;
+  if (e.hp <= 0) {
+    const i = enemies.indexOf(e);
+    if (i >= 0) {
+      enemies.splice(i, 1);
+      gold += e.bounty;
+      tone(560 + Math.random() * 120, 55, 0.035, 'square', 260);
+      refreshUI();
+    }
+  }
+}
+
+function impact(b) {
+  if (b.splash > 0) {
+    effects.push({ x: b.x, y: b.y, r: b.splash, t: 0.22, max: 0.22, color: b.color });
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const e = enemies[i];
+      const p = posAt(e.d);
+      if (Math.hypot(p.x - b.x, p.y - b.y) > b.splash) continue;
+      if (b.slowDur > 0) { e.slowPct = Math.max(e.slowPct, b.slowPct); e.slowT = b.slowDur; }
+      damage(e, b.dmg, b.pierce);
+    }
+  } else if (b.target && b.target.hp > 0 && enemies.indexOf(b.target) >= 0) {
+    if (b.slowDur > 0) { b.target.slowPct = Math.max(b.target.slowPct, b.slowPct); b.target.slowT = b.slowDur; }
+    damage(b.target, b.dmg, b.pierce);
+  }
+}
+
+function die() {
+  state = 'dead';
+  const reached = wave;
+  const board = loadBoard();
+  const entry = { w: reached, d: Date.now() };
+  board.push(entry);
+  board.sort((a, b) => b.w - a.w);
+  board.length = Math.min(board.length, 5);
+  saveBoard(board);
+  bestWave = board[0].w;
+  tone(140, 420, 0.2, 'sawtooth', 50);
+  document.getElementById('finalLine').textContent = '你守住了第 ' + reached + ' 波';
+  document.getElementById('board').innerHTML = board.map((e, i) => {
+    const dd = new Date(e.d);
+    const ds = (dd.getMonth() + 1) + '/' + dd.getDate();
+    return '<li' + (e === entry ? ' class="me"' : '') + '><span>#' + (i + 1) +
+           '</span><span>第 ' + e.w + ' 波</span><span>' + ds + '</span></li>';
+  }).join('');
+  selected = null; pendingKind = null; confirmAct = null;
+  renderPanel();
+  refreshSaveUI();   // 剛破的紀錄要立刻反映到存檔碼上
+  setTimeout(() => { if (state === 'dead') overEl.classList.remove('hidden'); }, 600);
+}
+
+/* ============ 繪製 ============ */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let cell = 40, offX = 0, offY = 0;   // 格子邊長與置中位移(CSS 像素)
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cell = Math.floor(Math.min(w / map.cols, h / map.rows));
+  offX = Math.floor((w - cell * map.cols) / 2);
+  offY = Math.floor((h - cell * map.rows) / 2);
+}
+window.addEventListener('resize', resize);
+// canvas 是 flex 撐開的,尺寸可能在 window 沒變的情況下改變(例如面板高度變化)。
+// 只靠 window resize 會讓 cell/offX/offY 停在舊值,畫面與觸碰判定就對不上。
+if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
+
+const S = (g) => g * cell;                 // 格 → 像素長度
+const PX = (gx) => offX + gx * cell;       // 格 x → 像素 x
+const PY = (gy) => offY + gy * cell;
+
+function draw() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  ctx.fillStyle = '#12141c';
+  ctx.fillRect(0, 0, w, h);
+
+  // 地面格子:可建造較亮,不可建造較暗
+  for (let y = 0; y < map.rows; y++) {
+    for (let x = 0; x < map.cols; x++) {
+      ctx.fillStyle = buildable[y][x] ? ((x + y) % 2 ? '#232a38' : '#1e2531') : '#191d27';
+      ctx.fillRect(PX(x), PY(y), cell, cell);
+    }
+  }
+
+  // 軌道:沿 path 畫粗線 + 枕木感的虛線
+  ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+  ctx.strokeStyle = '#39415a'; ctx.lineWidth = S(0.92);
+  ctx.beginPath();
+  ctx.moveTo(PX(map.path[0][0]), PY(map.path[0][1]));
+  for (let i = 1; i < map.path.length; i++) ctx.lineTo(PX(map.path[i][0]), PY(map.path[i][1]));
+  ctx.stroke();
+  ctx.strokeStyle = '#2b3245'; ctx.lineWidth = S(0.62);
+  ctx.stroke();
+
+  // 終點基地
+  const endP = posAt(pathLen);
+  ctx.fillStyle = '#ff6b6b';
+  ctx.fillRect(PX(endP.x) - S(0.3), PY(endP.y) - S(0.3), S(0.6), S(0.6));
+  ctx.fillStyle = '#ffd0d0';
+  ctx.fillRect(PX(endP.x) - S(0.14), PY(endP.y) - S(0.14), S(0.28), S(0.28));
+
+  // 選取高亮
+  if (selected) {
+    const t = selected.kind === 'tower' ? selected.tower : null;
+    const gx = t ? t.gx : selected.gx, gy = t ? t.gy : selected.gy;
+    if (t) {   // 射程圈
+      ctx.fillStyle = 'rgba(255,192,67,.10)';
+      ctx.strokeStyle = 'rgba(255,192,67,.55)'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(PX(t.x), PY(t.y), S(t.range), 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+    }
+    ctx.strokeStyle = '#ffc043'; ctx.lineWidth = 3;
+    ctx.strokeRect(PX(gx) + 1.5, PY(gy) + 1.5, cell - 3, cell - 3);
+  }
+
+  // 待確認動作的預覽:蓋塔畫半透明幽靈塔+射程,升級用虛線畫「升級後」的新射程
+  if (confirmAct) {
+    if (confirmAct.kind === 'build') {
+      const d = TOWERS[confirmAct.tkind];
+      const cx = PX(confirmAct.gx + 0.5), cy = PY(confirmAct.gy + 0.5), r = S(0.34);
+      ctx.fillStyle = 'rgba(255,192,67,.12)';
+      ctx.strokeStyle = 'rgba(255,192,67,.7)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, S(d.range), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = d.color;
+      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#ffc043'; ctx.lineWidth = 3;
+      ctx.strokeRect(PX(confirmAct.gx) + 1.5, PY(confirmAct.gy) + 1.5, cell - 3, cell - 3);
+    } else {
+      const t = confirmAct.tower;
+      ctx.strokeStyle = 'rgba(255,192,67,.45)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(PX(t.x), PY(t.y), S(t.range), 0, Math.PI * 2); ctx.stroke();
+      if (confirmAct.kind === 'upgrade') {
+        const u = TOWERS[t.kind].up[t.lvl];
+        ctx.strokeStyle = '#7de08a'; ctx.setLineDash([6, 5]);
+        ctx.beginPath(); ctx.arc(PX(t.x), PY(t.y), S(u.range != null ? u.range : t.range), 0, Math.PI * 2);
+        ctx.stroke(); ctx.setLineDash([]);
+      } else {
+        ctx.strokeStyle = '#ff6b6b'; ctx.lineWidth = 3;
+        ctx.strokeRect(PX(t.gx) + 1.5, PY(t.gy) + 1.5, cell - 3, cell - 3);
+      }
+    }
+  }
+
+  // 塔(方塊像素風:底座 + 砲管 + 等級點)
+  for (const t of towers) {
+    const d = TOWERS[t.kind];
+    const cx = PX(t.x), cy = PY(t.y), r = S(0.34);
+    ctx.fillStyle = '#0d1017';
+    ctx.fillRect(cx - r, cy - r + 2, r * 2, r * 2);
+    ctx.fillStyle = d.color;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    ctx.fillStyle = 'rgba(255,255,255,.22)';
+    ctx.fillRect(cx - r, cy - r, r * 2, S(0.1));
+    // 砲管
+    ctx.save();
+    ctx.translate(cx, cy); ctx.rotate(t.angle);
+    ctx.fillStyle = '#0f1420';
+    ctx.fillRect(0, -S(0.09), S(0.5), S(0.18));
+    ctx.restore();
+    // 等級點
+    for (let i = 0; i < t.lvl; i++) {
+      ctx.fillStyle = '#ffc043';
+      ctx.fillRect(cx - r + 3 + i * (S(0.13) + 2), cy + r - S(0.13) - 3, S(0.13), S(0.13));
+    }
+  }
+
+  // 爆炸
+  for (const ef of effects) {
+    const k = ef.t / ef.max;
+    ctx.globalAlpha = k * 0.55;
+    ctx.fillStyle = ef.color;
+    ctx.beginPath();
+    ctx.arc(PX(ef.x), PY(ef.y), S(ef.r) * (1.25 - k * 0.35), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // 敵人(方塊 + 血條;減速時罩一層藍)
+  for (const e of enemies) {
+    const p = posAt(e.d);
+    const cx = PX(p.x), cy = PY(p.y), r = S(e.size);
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    ctx.fillRect(cx - r, cy - r + 3, r * 2, r * 2);
+    ctx.fillStyle = e.hitFlash > 0 ? '#ffffff' : e.color;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    if (e.slowPct > 0) {
+      ctx.fillStyle = 'rgba(110,231,224,.42)';
+      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    }
+    if (e.type === 'armored' || e.type === 'boss') {   // 重甲標記
+      ctx.fillStyle = 'rgba(255,255,255,.5)';
+      ctx.fillRect(cx - r * 0.45, cy - r * 0.45, r * 0.9, r * 0.9);
+    }
+    const bw = r * 2, bh = Math.max(3, S(0.075));
+    ctx.fillStyle = '#000';
+    ctx.fillRect(cx - r, cy - r - bh - 3, bw, bh);
+    ctx.fillStyle = e.hp / e.maxHp > 0.35 ? '#7de08a' : '#ff6b6b';
+    ctx.fillRect(cx - r, cy - r - bh - 3, bw * Math.max(0, e.hp / e.maxHp), bh);
+  }
+
+  // 子彈
+  for (const b of bullets) {
+    ctx.fillStyle = b.color;
+    const s = S(0.11);
+    ctx.fillRect(PX(b.x) - s / 2, PY(b.y) - s / 2, s, s);
+  }
+}
+
+/* ============ UI ============ */
+const menuEl = document.getElementById('menu');
+const overEl = document.getElementById('over');
+const panelEl = document.getElementById('panel');
+const waveBtn = document.getElementById('waveBtn');
+
+function refreshUI() {
+  document.getElementById('lives').textContent = Math.max(0, lives);
+  document.getElementById('gold').textContent = gold;
+  document.getElementById('wave').textContent = wave;
+  document.getElementById('best').textContent = bestWave;
+  waveBtn.disabled = waveActive || state !== 'playing';
+  waveBtn.textContent = waveActive ? '進行中…' : '出擊 ▶';
+  renderPanel();
+}
+
+/* 花錢/毀塔的動作一律先進確認狀態,避免手機上誤觸就噴掉一整座塔的錢。
+   確認列同時把「買到什麼」講清楚,升級還會顯示 before → after。 */
+function renderConfirm() {
+  const c = confirmAct;
+  let color, title, detail, cost, okLabel, danger = false;
+
+  if (c.kind === 'build') {
+    const d = TOWERS[c.tkind];
+    color = d.color; cost = d.cost; okLabel = '確認建造';
+    title = '建造 ' + d.name;
+    detail = '傷害 ' + d.dmg + ' · 射速 ' + d.fireRate.toFixed(1) + '/s · 射程 ' + d.range.toFixed(1) +
+             (d.splash > 0 ? ' · 濺射 ' + d.splash : '') +
+             (d.slowPct > 0 ? ' · 減速 ' + Math.round(d.slowPct * 100) + '%' : '');
+  } else if (c.kind === 'upgrade') {
+    const t = c.tower, d = TOWERS[t.kind], u = d.up[t.lvl];
+    color = d.color; cost = u.cost; okLabel = '確認升級';
+    title = d.name + ' Lv.' + (t.lvl + 1) + ' → Lv.' + (t.lvl + 2);
+    const p = [];
+    const cmp = (label, now, next, fmt) => {
+      if (next == null || next === now) return;
+      p.push(label + ' ' + (fmt ? fmt(now) : now) + '→' + (fmt ? fmt(next) : next));
+    };
+    cmp('傷害', t.dmg, u.dmg);
+    cmp('射速', t.fireRate, u.fireRate, v => v.toFixed(1));
+    cmp('射程', t.range, u.range, v => v.toFixed(1));
+    cmp('濺射', t.splash, u.splash);
+    cmp('減速', t.slowPct, u.slowPct, v => Math.round(v * 100) + '%');
+    cmp('破甲', t.pierce, u.pierce);
+    detail = p.join(' · ');
+  } else {
+    const t = c.tower, d = TOWERS[t.kind];
+    color = d.color; cost = -Math.floor(t.spent * SELL_RATE); okLabel = '確認拆除'; danger = true;
+    title = '拆除 ' + d.name + ' Lv.' + (t.lvl + 1);
+    detail = '退回已投入的 ' + Math.round(SELL_RATE * 100) + '%,這座塔會消失';
+  }
+
+  const poor = cost > 0 && gold < cost;
+  panelEl.innerHTML =
+    '<div class="info">' +
+      '<span class="ic" style="width:26px;height:26px;border-radius:4px;background:' + color + '"></span>' +
+      '<span class="txt"><span class="h">' + title + '</span><br>' +
+      '<span class="s">' + detail + '</span></span>' +
+      '<button class="act' + (danger ? ' danger' : '') + '" id="okBtn"' + (poor ? ' disabled' : '') + '>' +
+        okLabel + ' ' + (cost >= 0 ? '🪙' + cost : '+🪙' + (-cost)) + '</button>' +
+      '<button class="act sell" id="noBtn">取消</button>' +
+    '</div>';
+  document.getElementById('okBtn').addEventListener('click', commitConfirm);
+  document.getElementById('noBtn').addEventListener('click', () => { confirmAct = null; renderPanel(); });
+}
+
+function commitConfirm() {
+  const c = confirmAct;
+  if (!c) return;
+  confirmAct = null;
+  if (c.kind === 'build') {
+    const kind = c.tkind;
+    buildTower(kind, c.gx, c.gy);
+    selected = null;                                        // 保持選著同一種塔,可連續蓋
+    pendingKind = gold >= TOWERS[kind].cost ? kind : null;
+    refreshUI();
+  } else if (c.kind === 'upgrade') {
+    upgradeTower(c.tower);
+  } else {
+    sellTower(c.tower);
+  }
+}
+
+function renderPanel() {
+  if (confirmAct && state === 'playing') { renderConfirm(); return; }
+  // 只有「選到一座已存在的塔」才切換成資訊面板,其餘時間商店常駐
+  if (!(selected && selected.kind === 'tower' && state === 'playing')) {
+    panelEl.innerHTML = '<div class="shop">' + TOWER_KEYS.map(k => {
+      const d = TOWERS[k];
+      const poor = gold < d.cost;
+      return '<div class="tcard' + (poor ? ' poor' : '') + (pendingKind === k ? ' sel' : '') +
+             '" data-build="' + k + '">' +
+             '<span class="ic" style="background:' + d.color + '"></span>' +
+             '<span class="nm">' + d.name + '</span>' +
+             '<span class="ds">' + d.desc + '</span>' +
+             '<span class="pr">🪙' + d.cost + '</span></div>';
+    }).join('') + '</div>';
+    for (const el of panelEl.querySelectorAll('[data-build]')) {
+      el.addEventListener('click', () => chooseTower(el.dataset.build));
+    }
+    return;
+  }
+
+  const t = selected.tower;
+  const d = TOWERS[t.kind];
+  const u = d.up[t.lvl];
+  const dps = (t.dmg * t.fireRate).toFixed(0);
+  panelEl.innerHTML =
+    '<div class="info">' +
+      '<span class="ic" style="width:26px;height:26px;border-radius:4px;background:' + d.color + '"></span>' +
+      '<span class="txt"><span class="h">' + d.name + ' Lv.' + (t.lvl + 1) + '</span><br>' +
+      '<span class="s">傷害 ' + t.dmg + ' · 射速 ' + t.fireRate.toFixed(1) + '/s · 射程 ' + t.range.toFixed(1) +
+      ' · DPS ' + dps + (t.splash > 0 ? ' · 濺射 ' + t.splash : '') +
+      (t.slowPct > 0 ? ' · 減速 ' + Math.round(t.slowPct * 100) + '%' : '') + '</span></span>' +
+      (u ? '<button class="act" id="upBtn"' + (gold < u.cost ? ' disabled' : '') + '>升級 🪙' + u.cost + '</button>'
+         : '<button class="act" disabled>已滿級</button>') +
+      '<button class="act sell" id="sellBtn">拆除 +🪙' + Math.floor(t.spent * SELL_RATE) + '</button>' +
+    '</div>';
+  const ub = document.getElementById('upBtn');
+  if (ub) ub.addEventListener('click', () => { confirmAct = { kind: 'upgrade', tower: t }; renderPanel(); });
+  document.getElementById('sellBtn').addEventListener('click',
+    () => { confirmAct = { kind: 'sell', tower: t }; renderPanel(); });
+}
+
+/* ============ 輸入(點一下選格子,手機桌面共用)============ */
+/* 兩種蓋塔流程都支援:先點商店選塔種再連點空地連續蓋,
+   或先點空地再從商店挑一種。 */
+function chooseTower(kind) {
+  if (state !== 'playing' || gold < TOWERS[kind].cost) return;
+  if (selected && selected.kind === 'empty') {   // 已經先選好格子 → 進確認
+    confirmAct = { kind: 'build', tkind: kind, gx: selected.gx, gy: selected.gy };
+    renderPanel();
+    return;
+  }
+  pendingKind = pendingKind === kind ? null : kind;
+  renderPanel();
+}
+
+function pickCell(clientX, clientY) {
+  confirmAct = null;   // 點地圖等於放棄上一個待確認的動作(再點別格就是改放那裡)
+  const r = canvas.getBoundingClientRect();
+  const gx = Math.floor((clientX - r.left - offX) / cell);
+  const gy = Math.floor((clientY - r.top - offY) / cell);
+  if (gx < 0 || gy < 0 || gx >= map.cols || gy >= map.rows) {
+    selected = null; pendingKind = null; renderPanel(); return;
+  }
+  const t = towerAt(gx, gy);
+  if (t) { selected = { kind: 'tower', tower: t }; pendingKind = null; }
+  else if (buildable[gy][gx]) {
+    if (pendingKind && gold >= TOWERS[pendingKind].cost) {
+      selected = null;
+      confirmAct = { kind: 'build', tkind: pendingKind, gx, gy };   // 先預覽,按確認才扣錢
+      renderPanel();
+      return;
+    }
+    selected = { kind: 'empty', gx, gy };
+  } else selected = null;
+  renderPanel();
+}
+
+// 用 pointer 事件,滑鼠與觸控共用一套;移動超過門檻視為拖曳不算點擊
+let downX = 0, downY = 0, downOK = false;
+canvas.addEventListener('pointerdown', e => {
+  downX = e.clientX; downY = e.clientY; downOK = true;
+});
+canvas.addEventListener('pointerup', e => {
+  if (!downOK) return;
+  downOK = false;
+  if (Math.abs(e.clientX - downX) > 14 || Math.abs(e.clientY - downY) > 14) return;
+  if (state !== 'playing') return;
+  pickCell(e.clientX, e.clientY);
+});
+canvas.addEventListener('pointercancel', () => { downOK = false; });
+
+waveBtn.addEventListener('click', () => { initAudio(); startWave(); });
+window.addEventListener('keydown', e => {
+  if (e.target && e.target.tagName === 'INPUT') return;   // 正在輸入存檔碼,別把空白/Enter 當成開始
+  if (e.key === ' ' || e.key === 'Enter') {
+    e.preventDefault();
+    if (state === 'playing') { initAudio(); startWave(); }
+    else startGame();
+  }
+});
+
+/* ============ 流程 ============ */
+function startGame() {
+  initAudio();
+  state = 'playing';
+  gold = map.startGold; lives = map.startLives; wave = 0;
+  towers = []; enemies = []; bullets = []; effects = [];
+  spawnQueue = []; spawnTimer = 0; waveActive = false;
+  selected = null; pendingKind = null; confirmAct = null;
+  menuEl.classList.add('hidden');
+  overEl.classList.add('hidden');
+  resize();
+  refreshUI();
+}
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('againBtn').addEventListener('click', startGame);
+
+/* ============ 主迴圈 ============ */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+resize();
+refreshUI();
+mountSaveUI();
+refreshSaveUI();
+requestAnimationFrame(frame);
+
+/* ============ 除錯:給之後新增地圖對照難度用 ============
+   在 console 輸入 tdDebug() 會印出路徑總長,以及一座基準塔(射程 2.6)
+   放在最佳位置能覆蓋路徑的比例。新地圖畫完拿這兩個數字跟「起始車站」比,
+   就知道難度偏移多少,不必從頭試玩。 */
+window.tdDebug = function () {
+  const R = TOWERS.gun.range;
+  let bestCover = 0, bestCell = null;
+  for (let y = 0; y < map.rows; y++) {
+    for (let x = 0; x < map.cols; x++) {
+      if (!buildable[y][x]) continue;
+      let cover = 0;
+      for (let d = 0; d < pathLen; d += 0.05) {
+        const p = posAt(d);
+        if (Math.hypot(p.x - (x + 0.5), p.y - (y + 0.5)) <= R) cover += 0.05;
+      }
+      if (cover > bestCover) { bestCover = cover; bestCell = [x, y]; }
+    }
+  }
+  const info = {
+    地圖: map.name,
+    路徑總長: pathLen.toFixed(2) + ' 格',
+    可建造格數: buildable.flat().filter(Boolean).length,
+    基準塔最佳覆蓋: bestCover.toFixed(2) + ' 格 (' + (bestCover / pathLen * 100).toFixed(1) + '%)',
+    最佳位置: bestCell
+  };
+  console.table(info);
+  return info;
+};
+</script>
+</body>
+</html>
