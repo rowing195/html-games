@@ -26,6 +26,22 @@
     background: #3a4054; color: #cfd6e8; cursor: pointer; font-family: inherit;
   }
   #saveBtn:disabled { opacity: .38; cursor: default; }
+  #speedBtn {
+    border: 0; border-radius: 999px; padding: 7px 14px; font-size: 14px; font-weight: 800;
+    background: #3a4054; color: #cfd6e8; cursor: pointer; font-family: inherit; min-width: 52px;
+  }
+  #speedBtn.fast { background: #6ee7e0; color: #06302e; }
+
+  /* 地圖選擇 */
+  .maps { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .mcard {
+    background: #262c3d; border: 2px solid #38405a; border-radius: 10px; padding: 9px 13px;
+    cursor: pointer; text-align: center; min-width: 128px;
+  }
+  .mcard.sel { border-color: #ffc043; background: #3b4260; }
+  .mcard .mn { display: block; font-size: 14px; font-weight: 800; }
+  .mcard .md { display: block; font-size: 10px; opacity: .65; margin-top: 3px; line-height: 1.4; }
+  .mcard .mb { display: block; font-size: 11px; color: #ffc043; margin-top: 4px; }
 
   /* 建塔／升級面板 */
   /* 面板永遠佔著版面,不隨選取出現/消失——否則 canvas 尺寸會變,
@@ -107,6 +123,7 @@
     <span>波 <b id="wave">0</b></span>
     <span class="sp"></span>
     <span style="opacity:.6;font-size:13px">最高 <b id="best">0</b></span>
+    <button id="speedBtn" title="加速。整數倍,物理完全一致">1×</button>
     <button id="saveBtn" title="存下目前進度,換裝置接著玩">💾 存檔</button>
     <button id="waveBtn">出擊 ▶</button>
   </div>
@@ -123,6 +140,7 @@
     花錢的動作都會先問過你才執行,不怕點錯<br>
     按「出擊」才會放出下一波,兩波之間可以慢慢想
   </p>
+  <div class="maps" id="mapPick"></div>
   <button class="btn" id="startBtn">開始防守</button>
   <button class="linkBtn" data-savetoggle>存檔碼(換裝置用)</button>
   <div class="save" data-save></div>
@@ -227,13 +245,30 @@ function waveComp(w) {
 /* ============ 地圖資料(遊戲邏輯只透過這個物件認識地圖)============ */
 /* path 是格子座標的轉折點,敵人沿線段走。可建造格由路徑自動算出。
    之後要加新地圖,往這個陣列多推一筆即可,不必動任何邏輯。 */
+/* 難度不是由「路徑長度」決定,是由「一座塔能覆蓋多少路徑」決定。
+   Z 字峽谷跟起始車站路徑幾乎一樣長(40 vs 39),但把三條直線拉開到彼此
+   射程不重疊時,機器人只撐到 16 波;縮到 3.5 格讓塔能同時顧兩條之後就回到 24 波。
+   起始金錢/生命只影響開局手感,不影響上限——實測把螺旋圖從 140/18 砍到 100/13,
+   機器人一樣死在第 30 波,因為後期是被指數成長的血量壓垮的。
+   在 console 打 tdDebug() 可以印出覆蓋率,拿來跟現有三張圖對照。 */
 const MAPS = [
   {
-    name: '起始車站',
+    name: '起始車站', desc: '三段折返,中央有大片好位置',
     cols: 14, rows: 11,
     path: [[-1, 1.5], [10.5, 1.5], [10.5, 4.5], [2.5, 4.5], [2.5, 7.5], [11.5, 7.5], [11.5, 9.5], [14, 9.5]],
-    startGold: WAVE.baseGold,
-    startLives: WAVE.baseLives
+    startGold: 190, startLives: 20
+  },
+  {
+    name: 'Z 字峽谷', desc: '只有三條長直線,一座塔頂多顧到兩條',
+    cols: 14, rows: 10,
+    path: [[-1, 1.5], [11.5, 1.5], [11.5, 5.0], [2.5, 5.0], [2.5, 8.5], [14, 8.5]],
+    startGold: 190, startLives: 20
+  },
+  {
+    name: '螺旋調車場', desc: '路線最長,敵人要繞很久才走得到底',
+    cols: 15, rows: 13,
+    path: [[-1, 1.5], [12.5, 1.5], [12.5, 11.5], [2.5, 11.5], [2.5, 4.5], [9.5, 4.5], [9.5, 8.5], [5.5, 8.5], [5.5, 6.5], [15, 6.5]],
+    startGold: 140, startLives: 18
   }
 ];
 
@@ -259,12 +294,15 @@ function tone(freq, ms, vol, type, slideTo) {
 }
 
 /* ============ 本機排行榜(localStorage 前五名)============ */
-const BOARD_KEY = 'towerDefenseBoard';
+/* 每張地圖各自一份排行榜——長度不同、難度就不同,混在一起比毫無意義。
+   第一張沿用原本的 key,舊紀錄不會不見。 */
+let mapIndex = 0;
+function boardKey() { return 'towerDefenseBoard' + (mapIndex ? mapIndex : ''); }
 function loadBoard() {
-  try { return JSON.parse(localStorage.getItem(BOARD_KEY)) || []; } catch (e) { return []; }
+  try { return JSON.parse(localStorage.getItem(boardKey())) || []; } catch (e) { return []; }
 }
-function saveBoard(b) { try { localStorage.setItem(BOARD_KEY, JSON.stringify(b)); } catch (e) {} }
-let bestWave = (loadBoard()[0] || { w: 0 }).w;
+function saveBoard(b) { try { localStorage.setItem(boardKey(), JSON.stringify(b)); } catch (e) {} }
+let bestWave = 0;
 
 /* ============ 存檔碼(跨裝置搬紀錄,純前端、不需要伺服器)============ */
 /* 字母表刻意用 Crockford base32:拿掉 I L O U,手打時就不會把 1 跟 I、0 跟 O 搞混。
@@ -296,8 +334,9 @@ function normalizeCode(s) {
   return s.toUpperCase().replace(/[IL]/g, '1').replace(/O/g, '0').replace(/[^0-9A-Z]/g, '');
 }
 
+/* 第一個字是地圖編號:三張圖各有各的排行榜,碼也要能分辨是哪張圖的 */
 function exportCode() {
-  let p = '';
+  let p = b32(mapIndex, 1);
   for (const e of loadBoard().slice(0, 5)) p += b32(e.w, CODE_WIDTH);
   return groupCode(CODE_PREFIX + p + codeSum(p));
 }
@@ -309,13 +348,17 @@ function importCode(raw) {
   if (!s) return { ok: false, msg: '請先貼上或輸入存檔碼' };
   if (s[0] !== CODE_PREFIX) return { ok: false, msg: '這不是「方塊塔防」的存檔碼(開頭應該是 ' + CODE_PREFIX + ')' };
   const body = s.slice(1);
-  if (body.length < CODE_WIDTH + 1) return { ok: false, msg: '存檔碼太短,可能少打了字' };
+  if (body.length < 1 + CODE_WIDTH + 1) return { ok: false, msg: '存檔碼太短,可能少打了字' };
   const p = body.slice(0, -1), ck = body.slice(-1);
-  if (p.length % CODE_WIDTH !== 0) return { ok: false, msg: '長度不對,請確認有沒有漏字或多字' };
+  if ((p.length - 1) % CODE_WIDTH !== 0) return { ok: false, msg: '長度不對,請確認有沒有漏字或多字' };
   if (codeSum(p) !== ck) return { ok: false, msg: '檢查碼不符,應該是打錯了某個字' };
 
+  const mi = unb32(p.slice(0, 1));
+  if (mi < 0 || mi >= MAPS.length) return { ok: false, msg: '存檔碼指向不存在的地圖' };
+  if (mi !== mapIndex) return { ok: false, msg: '這是「' + MAPS[mi].name + '」的成績,請先在選單切到那張地圖再匯入' };
+
   const waves = [];
-  for (let i = 0; i < p.length; i += CODE_WIDTH) {
+  for (let i = 1; i < p.length; i += CODE_WIDTH) {
     const w = unb32(p.slice(i, i + CODE_WIDTH));
     if (w < 0) return { ok: false, msg: '存檔碼含有無效字元' };
     if (w > 0) waves.push(w);
@@ -341,12 +384,12 @@ function importCode(raw) {
    每座塔佔 3 個字:1 個字塞「種類×等級」,2 個字塞格子位置。
    已投入的金額不用存——它由種類和等級推得出來(拆塔退款才算得對)。 */
 const RESUME_PREFIX = 'R';
-const HEAD_W = 6;   // 波數2 + 金錢3 + 生命1
+const HEAD_W = 7;   // 地圖1 + 波數2 + 金錢3 + 生命1
 
 function canSaveResume() { return state === 'playing' && !waveActive; }
 
 function exportResume() {
-  let p = b32(wave, 2) + b32(gold, 3) + b32(Math.max(0, lives), 1);
+  let p = b32(mapIndex, 1) + b32(wave, 2) + b32(gold, 3) + b32(Math.max(0, lives), 1);
   for (const t of towers) {
     p += B32[TOWER_KEYS.indexOf(t.kind) * 3 + t.lvl];
     p += b32(t.gy * map.cols + t.gx, 2);
@@ -365,20 +408,25 @@ function importResume(raw) {
   if ((p.length - HEAD_W) % 3 !== 0) return { ok: false, msg: '長度不對,請確認有沒有漏字或多字' };
   if (codeSum(p) !== ck) return { ok: false, msg: '檢查碼不符,應該是打錯了某個字' };
 
-  const w = unb32(p.slice(0, 2)), g = unb32(p.slice(2, 5)), lv = unb32(p.slice(5, 6));
-  if (w < 0 || g < 0 || lv < 0) return { ok: false, msg: '續玩碼含有無效字元' };
+  const mi = unb32(p.slice(0, 1)), w = unb32(p.slice(1, 3)),
+        g = unb32(p.slice(3, 6)), lv = unb32(p.slice(6, 7));
+  if (mi < 0 || w < 0 || g < 0 || lv < 0) return { ok: false, msg: '續玩碼含有無效字元' };
+  if (mi >= MAPS.length) return { ok: false, msg: '續玩碼指向不存在的地圖(可能是更新版本的存檔)' };
   if (lv < 1) return { ok: false, msg: '這局的生命是 0,已經結束了' };
+  const prevMap = mapIndex;
+  selectMap(mi);   // 先切到存檔那張圖,位置驗證才有意義
+  const reject = m => { selectMap(prevMap); return { ok: false, msg: m }; };  // 驗不過就切回去
 
   const list = [], used = [];
   for (let i = HEAD_W; i < p.length; i += 3) {
     const kc = B32.indexOf(p[i]), pos = unb32(p.slice(i + 1, i + 3));
-    if (kc < 0 || pos < 0) return { ok: false, msg: '續玩碼含有無效字元' };
+    if (kc < 0 || pos < 0) return reject('續玩碼含有無效字元');
     const kind = TOWER_KEYS[Math.floor(kc / 3)], lvl = kc % 3;
-    if (!kind) return { ok: false, msg: '續玩碼裡有不存在的塔種' };
+    if (!kind) return reject('續玩碼裡有不存在的塔種');
     const gx = pos % map.cols, gy = Math.floor(pos / map.cols);
     // 位置驗證順便擋掉「別張地圖的存檔」——格子對不上就不給載
-    if (gy >= map.rows || !buildable[gy][gx]) return { ok: false, msg: '續玩碼裡有不能蓋塔的位置,可能不是這張地圖的存檔' };
-    if (used.indexOf(pos) >= 0) return { ok: false, msg: '續玩碼裡有兩座塔疊在同一格' };
+    if (gy >= map.rows || !buildable[gy][gx]) return reject('續玩碼裡有不能蓋塔的位置,可能不是這張地圖的存檔');
+    if (used.indexOf(pos) >= 0) return reject('續玩碼裡有兩座塔疊在同一格');
     used.push(pos);
     list.push({ kind, lvl, gx, gy });
   }
@@ -391,7 +439,7 @@ function importResume(raw) {
     towers.push(nt);
   }
   refreshUI();
-  return { ok: true, msg: '已載入:第 ' + w + ' 波前,' + list.length + ' 座塔,🪙' + g };
+  return { ok: true, msg: '已載入「' + map.name + '」:第 ' + w + ' 波前,' + list.length + ' 座塔,🪙' + g };
 }
 
 /* 兩個畫面(開始選單、失守畫面)共用同一組存檔碼介面 */
@@ -447,7 +495,7 @@ function refreshSaveUI() {
 }
 
 /* ============ 地圖幾何(從 path 推導出來的東西)============ */
-const map = MAPS[0];
+let map = MAPS[0];
 let segs = [], pathLen = 0;   // 每段:{x0,y0,x1,y1,len,acc}
 function buildGeometry() {
   segs = []; pathLen = 0;
@@ -484,12 +532,28 @@ function distToPath(px, py) {
   return best;
 }
 
-/* 可建造格:格心離路徑夠遠。開場算一次存成 buildable[y][x] */
-const buildable = [];
-for (let y = 0; y < map.rows; y++) {
-  const row = [];
-  for (let x = 0; x < map.cols; x++) row.push(distToPath(x + 0.5, y + 0.5) > 0.92);
-  buildable.push(row);
+/* 可建造格:格心離路徑夠遠。換地圖時重算一次存成 buildable[y][x] */
+let buildable = [];
+function buildBuildable() {
+  buildable = [];
+  for (let y = 0; y < map.rows; y++) {
+    const row = [];
+    for (let x = 0; x < map.cols; x++) row.push(distToPath(x + 0.5, y + 0.5) > 0.92);
+    buildable.push(row);
+  }
+}
+buildBuildable();
+
+/* 換地圖:所有從 path 推導出來的東西都要重算,遊戲邏輯本身完全不用動 */
+function selectMap(i) {
+  mapIndex = Math.max(0, Math.min(i, MAPS.length - 1));
+  map = MAPS[mapIndex];
+  buildGeometry();
+  buildBuildable();
+  bestWave = (loadBoard()[0] || { w: 0 }).w;   // 每張圖各自的排行榜
+  resize();
+  refreshUI();
+  refreshSaveUI();
 }
 
 /* ============ 遊戲狀態 ============ */
@@ -1123,17 +1187,55 @@ document.getElementById('startBtn').addEventListener('click', startGame);
 document.getElementById('againBtn').addEventListener('click', startGame);
 
 /* ============ 主迴圈 ============ */
+/* 加速不是把 dt 乘大,而是把同一個 dt 跑好幾次。
+   直接放大 dt 會讓子彈一步飛太遠、穿過敵人,判定就跟 1× 不一樣了;
+   分次推進則是逐格模擬,5× 的結果跟 1× 完全等價,只是時間壓縮。 */
+const SPEEDS = [1, 2, 3, 5];
+let speedIdx = 0;
+const speedBtn = document.getElementById('speedBtn');
+function applySpeedUI() {
+  speedBtn.textContent = SPEEDS[speedIdx] + '×';
+  speedBtn.classList.toggle('fast', SPEEDS[speedIdx] > 1);
+}
+speedBtn.addEventListener('click', () => {
+  speedIdx = (speedIdx + 1) % SPEEDS.length;
+  applySpeedUI();
+  tone(300 + speedIdx * 90, 50, 0.04, 'square');
+});
+applySpeedUI();
+
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  update(dt);
+  const steps = state === 'playing' ? SPEEDS[speedIdx] : 1;
+  for (let i = 0; i < steps; i++) update(dt);   // 中途死掉的話 update 會自己 no-op
   draw();
   requestAnimationFrame(frame);
 }
+
+/* ============ 地圖選擇 ============ */
+function renderMapPick() {
+  const el = document.getElementById('mapPick');
+  el.innerHTML = MAPS.map((m, i) => {
+    const saved = mapIndex;
+    mapIndex = i;
+    const best = (loadBoard()[0] || { w: 0 }).w;
+    mapIndex = saved;
+    return '<div class="mcard' + (i === mapIndex ? ' sel' : '') + '" data-map="' + i + '">' +
+           '<span class="mn">' + m.name + '</span>' +
+           '<span class="md">' + m.desc + '</span>' +
+           '<span class="mb">最高 ' + best + ' 波</span></div>';
+  }).join('');
+  for (const c of el.querySelectorAll('[data-map]')) {
+    c.addEventListener('click', () => { selectMap(+c.dataset.map); renderMapPick(); });
+  }
+}
+
 resize();
-refreshUI();
+selectMap(0);
 mountSaveUI();
+renderMapPick();
 refreshSaveUI();
 requestAnimationFrame(frame);
 
