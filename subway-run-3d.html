@@ -192,22 +192,55 @@ window.addEventListener('keyup', e => {
 });
 
 const canvas = document.getElementById('game');
-let touchX = 0, touchY = 0, touchT = 0;
+// 觸控：在 touchmove 中即時判定，過門檻立刻觸發。
+// 左右一次觸控只換一個車道（不論滑多長）；下滑是長按滑行，放開立刻起身。
+let touchId = null, anchorX = 0, anchorY = 0, touchT = 0, gestureMoved = false, laneDone = false;
+let swipeMin = 24;
+function calcSwipeMin() {
+  swipeMin = Math.max(18, Math.min(window.innerWidth, window.innerHeight) * 0.05);
+}
+calcSwipeMin();
+window.addEventListener('resize', calcSwipeMin);
+
+function trackedTouch(list) {
+  for (const t of list) if (t.identifier === touchId) return t;
+  return null;
+}
+
 canvas.addEventListener('touchstart', e => {
+  if (touchId !== null) return; // 只追蹤第一根手指，忽略後續多指
   const t = e.changedTouches[0];
-  touchX = t.clientX; touchY = t.clientY; touchT = performance.now();
+  touchId = t.identifier;
+  anchorX = t.clientX; anchorY = t.clientY; touchT = performance.now();
+  gestureMoved = false; laneDone = false;
 }, { passive: true });
-canvas.addEventListener('touchend', e => {
-  const t = e.changedTouches[0];
-  const dx = t.clientX - touchX, dy = t.clientY - touchY;
-  if (Math.abs(dx) < 24 && Math.abs(dy) < 24) {
-    if (state !== 'playing' && performance.now() - touchT < 400) startGame();
-    return;
+
+canvas.addEventListener('touchmove', e => {
+  if (touchId === null || state !== 'playing') return;
+  const t = trackedTouch(e.changedTouches);
+  if (!t) return;
+  const dx = t.clientX - anchorX, dy = t.clientY - anchorY;
+  if (Math.abs(dx) < swipeMin && Math.abs(dy) < swipeMin) return;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    if (laneDone) { anchorX = t.clientX; anchorY = t.clientY; return; } // 本次觸控已換過道
+    dx > 0 ? doRight() : doLeft();
+    laneDone = true;
   }
-  if (Math.abs(dx) > Math.abs(dy)) { dx > 0 ? doRight() : doLeft(); }
-  else if (dy < 0) doJump();
-  else doSlide(); // 觸控下滑：計時自動起身
+  else if (dy < 0) doJump();       // doJump 內部會取消滑行
+  else { slideHeld = true; doSlide(); }
+  gestureMoved = true;
+  anchorX = t.clientX; anchorY = t.clientY; // 重設錨點，之後仍可接跳躍／滑行
 }, { passive: true });
+
+function endTouch(e) {
+  if (touchId === null || !trackedTouch(e.changedTouches)) return;
+  touchId = null;
+  slideHeld = false;
+  if (player.sliding > 0) player.sliding = 0; // 放開立即起身
+  if (!gestureMoved && state !== 'playing' && performance.now() - touchT < 400) startGame();
+}
+canvas.addEventListener('touchend', endTouch, { passive: true });
+canvas.addEventListener('touchcancel', endTouch, { passive: true });
 canvas.addEventListener('click', () => { if (state !== 'playing') startGame(); });
 document.getElementById('startBtn').addEventListener('click', startGame);
 document.getElementById('againBtn').addEventListener('click', startGame);
