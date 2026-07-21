@@ -142,6 +142,13 @@ const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const CODE_PREFIX = 'S';        // 認出這是酷跑的碼，貼錯遊戲會被擋下來
 const SCORE_W = 3, COIN_W = 2, ENTRY_W = SCORE_W + COIN_W;
 
+/* 格式版本。碼裡的第一個字就是它，不合就明確拒絕。
+   檢查碼只防打錯字——它防不了「格式定義變了」，因為改完的舊碼依然算得過，
+   會安靜地讀成錯的東西。所以欄位寬度或內容一旦變動，就要把這個數字 +1。
+   （改遊戲的模型、速度、關卡都不用動它——碼裡只有分數和金幣。） */
+const CODE_VER = 1;
+const VER_ERR = '這是舊版的碼，格式已經改過，沒辦法相容（請在新版重新產生）';
+
 function b32(n, width) {
   n = Math.max(0, Math.min(Math.round(n), Math.pow(32, width) - 1));
   let s = '';
@@ -168,7 +175,7 @@ function normalizeCode(s) {
    前 3 名已經足夠把「你最好的成績」搬過去，剩下的在新裝置上很快就會補滿。 */
 const EXPORT_TOP = 3;
 function exportCode() {
-  let p = '';
+  let p = b32(CODE_VER, 1);
   for (const e of loadBoard().slice(0, EXPORT_TOP)) p += b32(e.s, SCORE_W) + b32(e.c, COIN_W);
   return groupCode(CODE_PREFIX + p + codeSum(p));
 }
@@ -179,13 +186,15 @@ function importCode(raw) {
   if (!s) return { ok: false, msg: '請先貼上或輸入存檔碼' };
   if (s[0] !== CODE_PREFIX) return { ok: false, msg: '這不是「Subway Run 3D」的存檔碼（開頭應該是 ' + CODE_PREFIX + '）' };
   const body = s.slice(1);
-  if (body.length < ENTRY_W + 1) return { ok: false, msg: '存檔碼太短，可能少打了字' };
+  if (body.length < 1 + ENTRY_W + 1) return { ok: false, msg: '存檔碼太短，可能少打了字' };
   const p = body.slice(0, -1), ck = body.slice(-1);
-  if (p.length % ENTRY_W !== 0) return { ok: false, msg: '長度不對，請確認有沒有漏字或多字' };
   if (codeSum(p) !== ck) return { ok: false, msg: '檢查碼不符，應該是打錯了某個字' };
+  if (unb32(p.slice(0, 1)) !== CODE_VER) return { ok: false, msg: VER_ERR };
+  // 版本字有可能剛好跟舊碼的第一個字撞號,所以長度不對時也要把「舊版」列進可能原因
+  if ((p.length - 1) % ENTRY_W !== 0) return { ok: false, msg: '長度不對——可能漏字多字,也可能是舊版產生的碼' };
 
   const rows = [];
-  for (let i = 0; i < p.length; i += ENTRY_W) {
+  for (let i = 1; i < p.length; i += ENTRY_W) {
     const sc = unb32(p.slice(i, i + SCORE_W));
     const co = unb32(p.slice(i + SCORE_W, i + ENTRY_W));
     if (sc < 0 || co < 0) return { ok: false, msg: '存檔碼含有無效字元' };

@@ -311,6 +311,23 @@ const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const CODE_PREFIX = 'T';        // 認出這是塔防的碼,貼錯遊戲會被擋下來
 const CODE_WIDTH = 2;           // 每筆紀錄 2 個字(波數上限 1023)
 
+/* 格式版本。碼裡的第一個字就是它,不合就明確拒絕。
+   檢查碼只防打錯字——它防不了「格式定義變了」,因為改完的舊碼依然算得過,
+   會安靜地讀成錯的東西。所以格式一旦變動,就要把這個數字 +1。
+
+   ★ 需要 +1 的情況:
+     - 調換或插入 TOWER_KEYS 的順序(索引會錯位)
+     - 調換或插入 MAPS 的順序(地圖編號會錯位)
+     - 升級層數超過 3 級(打包公式是 種類×3+等級)
+     - 改動任何欄位的字元寬度
+     - 改動某張圖的 cols(位置是 gy*cols+gx 算出來的)
+   ☆ 不需要 +1 的情況:
+     - 改模型、顏色、名稱、說明(碼裡根本沒存這些)
+     - 改數值(傷害/射程/費用)
+     - 往 TOWER_KEYS 或 MAPS 的「最後面」追加新項目 */
+const CODE_VER = 1;
+const VER_ERR = '這是舊版的碼,格式已經改過,沒辦法相容(請在新版重新產生)';
+
 function b32(n, width) {
   n = Math.max(0, Math.min(Math.round(n), Math.pow(32, width) - 1));
   let s = '';
@@ -334,9 +351,9 @@ function normalizeCode(s) {
   return s.toUpperCase().replace(/[IL]/g, '1').replace(/O/g, '0').replace(/[^0-9A-Z]/g, '');
 }
 
-/* 第一個字是地圖編號:三張圖各有各的排行榜,碼也要能分辨是哪張圖的 */
+/* 版本 + 地圖編號 + 各筆波數 */
 function exportCode() {
-  let p = b32(mapIndex, 1);
+  let p = b32(CODE_VER, 1) + b32(mapIndex, 1);
   for (const e of loadBoard().slice(0, 5)) p += b32(e.w, CODE_WIDTH);
   return groupCode(CODE_PREFIX + p + codeSum(p));
 }
@@ -348,17 +365,18 @@ function importCode(raw) {
   if (!s) return { ok: false, msg: '請先貼上或輸入存檔碼' };
   if (s[0] !== CODE_PREFIX) return { ok: false, msg: '這不是「方塊塔防」的存檔碼(開頭應該是 ' + CODE_PREFIX + ')' };
   const body = s.slice(1);
-  if (body.length < 1 + CODE_WIDTH + 1) return { ok: false, msg: '存檔碼太短,可能少打了字' };
+  if (body.length < 2 + CODE_WIDTH + 1) return { ok: false, msg: '存檔碼太短,可能少打了字' };
   const p = body.slice(0, -1), ck = body.slice(-1);
-  if ((p.length - 1) % CODE_WIDTH !== 0) return { ok: false, msg: '長度不對,請確認有沒有漏字或多字' };
   if (codeSum(p) !== ck) return { ok: false, msg: '檢查碼不符,應該是打錯了某個字' };
+  if (unb32(p.slice(0, 1)) !== CODE_VER) return { ok: false, msg: VER_ERR };
+  if ((p.length - 2) % CODE_WIDTH !== 0) return { ok: false, msg: '長度不對——可能漏字多字,也可能是舊版產生的碼' };
 
-  const mi = unb32(p.slice(0, 1));
+  const mi = unb32(p.slice(1, 2));
   if (mi < 0 || mi >= MAPS.length) return { ok: false, msg: '存檔碼指向不存在的地圖' };
   if (mi !== mapIndex) return { ok: false, msg: '這是「' + MAPS[mi].name + '」的成績,請先在選單切到那張地圖再匯入' };
 
   const waves = [];
-  for (let i = 1; i < p.length; i += CODE_WIDTH) {
+  for (let i = 2; i < p.length; i += CODE_WIDTH) {
     const w = unb32(p.slice(i, i + CODE_WIDTH));
     if (w < 0) return { ok: false, msg: '存檔碼含有無效字元' };
     if (w > 0) waves.push(w);
@@ -384,12 +402,12 @@ function importCode(raw) {
    每座塔佔 3 個字:1 個字塞「種類×等級」,2 個字塞格子位置。
    已投入的金額不用存——它由種類和等級推得出來(拆塔退款才算得對)。 */
 const RESUME_PREFIX = 'R';
-const HEAD_W = 7;   // 地圖1 + 波數2 + 金錢3 + 生命1
+const HEAD_W = 8;   // 版本1 + 地圖1 + 波數2 + 金錢3 + 生命1
 
 function canSaveResume() { return state === 'playing' && !waveActive; }
 
 function exportResume() {
-  let p = b32(mapIndex, 1) + b32(wave, 2) + b32(gold, 3) + b32(Math.max(0, lives), 1);
+  let p = b32(CODE_VER, 1) + b32(mapIndex, 1) + b32(wave, 2) + b32(gold, 3) + b32(Math.max(0, lives), 1);
   for (const t of towers) {
     p += B32[TOWER_KEYS.indexOf(t.kind) * 3 + t.lvl];
     p += b32(t.gy * map.cols + t.gx, 2);
@@ -405,11 +423,12 @@ function importResume(raw) {
   const body = s.slice(1);
   if (body.length < HEAD_W + 1) return { ok: false, msg: '續玩碼太短,可能少打了字' };
   const p = body.slice(0, -1), ck = body.slice(-1);
-  if ((p.length - HEAD_W) % 3 !== 0) return { ok: false, msg: '長度不對,請確認有沒有漏字或多字' };
   if (codeSum(p) !== ck) return { ok: false, msg: '檢查碼不符,應該是打錯了某個字' };
+  if (unb32(p.slice(0, 1)) !== CODE_VER) return { ok: false, msg: VER_ERR };
+  if ((p.length - HEAD_W) % 3 !== 0) return { ok: false, msg: '長度不對——可能漏字多字,也可能是舊版產生的碼' };
 
-  const mi = unb32(p.slice(0, 1)), w = unb32(p.slice(1, 3)),
-        g = unb32(p.slice(3, 6)), lv = unb32(p.slice(6, 7));
+  const mi = unb32(p.slice(1, 2)), w = unb32(p.slice(2, 4)),
+        g = unb32(p.slice(4, 7)), lv = unb32(p.slice(7, 8));
   if (mi < 0 || w < 0 || g < 0 || lv < 0) return { ok: false, msg: '續玩碼含有無效字元' };
   if (mi >= MAPS.length) return { ok: false, msg: '續玩碼指向不存在的地圖(可能是更新版本的存檔)' };
   if (lv < 1) return { ok: false, msg: '這局的生命是 0,已經結束了' };
