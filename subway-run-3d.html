@@ -27,6 +27,27 @@
            background: rgba(0,0,0,.28); border-radius: 12px; min-width: 260px; }
   #board li { display: flex; justify-content: space-between; gap: 16px; opacity: .82; }
   #board li.me { color: #ffd24a; font-weight: 800; opacity: 1; }
+
+  /* 存檔碼 */
+  .linkBtn { background: none; border: 0; color: #ffd24a; font: inherit; font-size: 13px;
+             text-decoration: underline; cursor: pointer; padding: 4px; }
+  .save { width: min(370px, 88vw); background: rgba(6,11,26,.9); border-radius: 12px;
+          padding: 12px; display: none; text-align: left; }
+  .save.on { display: block; }
+  .save .lb { font-size: 12px; opacity: .75; margin-bottom: 5px; }
+  .save .code { font-family: ui-monospace, "Consolas", monospace; font-size: 18px; letter-spacing: 2px;
+                background: rgba(0,0,0,.4); padding: 9px; border-radius: 8px; word-break: break-all; }
+  .save input { width: 100%; box-sizing: border-box; font-family: ui-monospace, "Consolas", monospace;
+                font-size: 16px; padding: 9px; border-radius: 8px; border: 2px solid rgba(255,255,255,.25);
+                background: rgba(0,0,0,.6); color: #fff; letter-spacing: 2px; text-transform: uppercase; }
+  .save .row { display: flex; gap: 8px; margin-top: 8px; }
+  .save .sbtn { flex: 1; border: 0; border-radius: 8px; padding: 10px; font: inherit; font-size: 13px;
+                font-weight: 800; cursor: pointer; background: #ffbe3d; color: #4a2c00; }
+  .save .sbtn.alt { background: rgba(255,255,255,.16); color: #fff; }
+  .save .sbtn:disabled { background: rgba(255,255,255,.12); color: #9aa3b8; cursor: default; }
+  .save .msg { font-size: 12px; margin-top: 9px; min-height: 1.3em; line-height: 1.5; }
+  .save .msg.ok { color: #8ef0a0; }
+  .save .msg.err { color: #ff9a9a; }
 </style>
 </head>
 <body>
@@ -39,6 +60,8 @@
   <p>← → / A D 換道　　↑ / W / 空白鍵 跳躍　　↓ / S 按住蹲滑<br>
      火車可以跳上去在車頂奔跑，車頂常有金幣！　手機：上下左右滑動</p>
   <div class="btn" id="startBtn">開始遊戲</div>
+  <button class="linkBtn" data-savetoggle>存檔碼（換裝置用）</button>
+  <div class="save" data-save></div>
 </div>
 
 <div id="over" class="overlay hidden">
@@ -47,6 +70,8 @@
   <p style="opacity:.75;font-size:14px;margin-top:4px">本機排行榜</p>
   <ol id="board"></ol>
   <div class="btn" id="againBtn">再玩一次</div>
+  <button class="linkBtn" data-savetoggle>存檔碼（換裝置用）</button>
+  <div class="save" data-save></div>
 </div>
 
 <script>
@@ -106,6 +131,121 @@ function loadBoard() {
 }
 function saveBoard(b) { try { localStorage.setItem(BOARD_KEY, JSON.stringify(b)); } catch (e) {} }
 let highScore = (loadBoard()[0] || { s: 0 }).s;
+
+/* ============ 存檔碼（跨裝置搬紀錄，純前端、不需要伺服器）============ */
+/* 字母表用 Crockford base32：拿掉 I L O U，手打時不會把 1 跟 I、0 跟 O 搞混。
+   每筆紀錄 5 個字（分數 3 + 金幣 2），只有一筆時碼很短。 */
+const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const CODE_PREFIX = 'S';        // 認出這是酷跑的碼，貼錯遊戲會被擋下來
+const SCORE_W = 3, COIN_W = 2, ENTRY_W = SCORE_W + COIN_W;
+
+function b32(n, width) {
+  n = Math.max(0, Math.min(Math.round(n), Math.pow(32, width) - 1));
+  let s = '';
+  for (let i = 0; i < width; i++) { s = B32[n % 32] + s; n = Math.floor(n / 32); }
+  return s;
+}
+function unb32(s) {
+  let n = 0;
+  for (const c of s) { const v = B32.indexOf(c); if (v < 0) return -1; n = n * 32 + v; }
+  return n;
+}
+// 加權總和：除了打錯字，連前後兩字對調也驗得出來
+function codeSum(s) {
+  let t = 0;
+  for (let i = 0; i < s.length; i++) t += B32.indexOf(s[i]) * (i + 1);
+  return B32[t % 32];
+}
+function groupCode(s) { return s.replace(/(.{4})/g, '$1-').replace(/-$/, ''); }
+function normalizeCode(s) {
+  return s.toUpperCase().replace(/[IL]/g, '1').replace(/O/g, '0').replace(/[^0-9A-Z]/g, '');
+}
+
+/* 只帶前 3 名。每筆要 5 個字，全帶五筆會變成 33 個字，手打太痛苦；
+   前 3 名已經足夠把「你最好的成績」搬過去，剩下的在新裝置上很快就會補滿。 */
+const EXPORT_TOP = 3;
+function exportCode() {
+  let p = '';
+  for (const e of loadBoard().slice(0, EXPORT_TOP)) p += b32(e.s, SCORE_W) + b32(e.c, COIN_W);
+  return groupCode(CODE_PREFIX + p + codeSum(p));
+}
+
+/* 匯入採「合併」而不是覆蓋：兩台裝置的紀錄併起來取前五名，不會弄丟東西 */
+function importCode(raw) {
+  const s = normalizeCode(raw);
+  if (!s) return { ok: false, msg: '請先貼上或輸入存檔碼' };
+  if (s[0] !== CODE_PREFIX) return { ok: false, msg: '這不是「Subway Run 3D」的存檔碼（開頭應該是 ' + CODE_PREFIX + '）' };
+  const body = s.slice(1);
+  if (body.length < ENTRY_W + 1) return { ok: false, msg: '存檔碼太短，可能少打了字' };
+  const p = body.slice(0, -1), ck = body.slice(-1);
+  if (p.length % ENTRY_W !== 0) return { ok: false, msg: '長度不對，請確認有沒有漏字或多字' };
+  if (codeSum(p) !== ck) return { ok: false, msg: '檢查碼不符，應該是打錯了某個字' };
+
+  const rows = [];
+  for (let i = 0; i < p.length; i += ENTRY_W) {
+    const sc = unb32(p.slice(i, i + SCORE_W));
+    const co = unb32(p.slice(i + SCORE_W, i + ENTRY_W));
+    if (sc < 0 || co < 0) return { ok: false, msg: '存檔碼含有無效字元' };
+    if (sc > 0) rows.push({ s: sc, c: co });
+  }
+  const board = loadBoard();
+  const seen = board.map(e => e.s + '/' + e.c);
+  let added = 0;
+  for (const r of rows) {
+    const key = r.s + '/' + r.c;
+    if (seen.indexOf(key) >= 0) continue;   // 同分同金幣不重複收，避免重複匯入灌水
+    board.push({ s: r.s, c: r.c, d: Date.now() }); seen.push(key); added++;
+  }
+  board.sort((a, b) => b.s - a.s);
+  board.length = Math.min(board.length, 5);
+  saveBoard(board);
+  highScore = board[0] ? board[0].s : 0;
+  return { ok: true, msg: added ? '匯入成功，新增 ' + added + ' 筆，目前最高 ' + highScore + ' 分'
+                                : '匯入成功，但這些紀錄你已經有了' };
+}
+
+/* 兩個畫面（開始選單、結束畫面）共用同一組存檔碼介面 */
+function mountSaveUI() {
+  for (const box of document.querySelectorAll('[data-save]')) {
+    box.innerHTML =
+      '<div class="lb">這台裝置的存檔碼（含前 3 名，複製到另一台貼上）</div>' +
+      '<div class="code" data-code></div>' +
+      '<div class="row"><button class="sbtn" data-copy>複製</button></div>' +
+      '<div class="lb" style="margin-top:12px">貼上另一台的存檔碼</div>' +
+      '<input data-in placeholder="例如 S1A2-B3C4-D5" autocomplete="off" spellcheck="false">' +
+      '<div class="row"><button class="sbtn alt" data-imp>匯入合併</button></div>' +
+      '<div class="msg" data-msg></div>';
+
+    const msg = box.querySelector('[data-msg]');
+    const say = (text, cls) => { msg.textContent = text; msg.className = 'msg ' + (cls || ''); };
+
+    box.querySelector('[data-copy]').addEventListener('click', async () => {
+      const code = box.querySelector('[data-code]').textContent;
+      try { await navigator.clipboard.writeText(code); say('已複製：' + code, 'ok'); }
+      catch (e) { say('這個瀏覽器不給自動複製，請手動選取上面的碼', 'err'); }
+    });
+    box.querySelector('[data-imp]').addEventListener('click', () => {
+      const r = importCode(box.querySelector('[data-in]').value);
+      say(r.msg, r.ok ? 'ok' : 'err');
+      if (r.ok) { box.querySelector('[data-in]').value = ''; refreshSaveUI(); }
+    });
+  }
+  for (const btn of document.querySelectorAll('[data-savetoggle]')) {
+    btn.addEventListener('click', () => {
+      const box = btn.parentElement.querySelector('[data-save]');
+      box.classList.toggle('on');
+      if (box.classList.contains('on')) refreshSaveUI();
+    });
+  }
+}
+function refreshSaveUI() {
+  const has = loadBoard().length > 0;
+  for (const el of document.querySelectorAll('[data-code]')) {
+    el.textContent = has ? exportCode() : '還沒有紀錄，先玩一場';
+    el.style.opacity = has ? '1' : '.5';
+  }
+  for (const b of document.querySelectorAll('[data-copy]')) b.disabled = !has;
+}
 
 const hudEl  = document.getElementById('hud');
 const menuEl = document.getElementById('menu');
@@ -171,6 +311,7 @@ function doSlide() {
 }
 
 window.addEventListener('keydown', e => {
+  if (e.target && e.target.tagName === 'INPUT') return;  // 正在輸入存檔碼，別把空白/Enter 當成開始
   const k = e.key;
   if (k === ' ' || k.startsWith('Arrow')) e.preventDefault();
   if (state !== 'playing') {
@@ -244,6 +385,8 @@ canvas.addEventListener('touchcancel', endTouch, { passive: true });
 canvas.addEventListener('click', () => { if (state !== 'playing') startGame(); });
 document.getElementById('startBtn').addEventListener('click', startGame);
 document.getElementById('againBtn').addEventListener('click', startGame);
+mountSaveUI();
+refreshSaveUI();
 
 /* ============ 流程 ============ */
 function startGame() {
@@ -279,6 +422,7 @@ function die() {
     return '<li' + (e === entry ? ' class="me"' : '') + '><span>#' + (i + 1) + '</span><span>' +
            e.s + ' 分</span><span>🪙' + e.c + '</span><span>' + ds + '</span></li>';
   }).join('');
+  refreshSaveUI();   // 剛破的紀錄要立刻反映到存檔碼上
   setTimeout(() => { if (state === 'dead') overEl.classList.remove('hidden'); }, 700);
 }
 
