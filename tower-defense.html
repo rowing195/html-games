@@ -254,11 +254,13 @@ const TOWERS = {
           { cost: 350, dmg: 62, slowPct: 0.92, slowDur: 2.4, splash: 2.6, range: 3.8 } ]
   },
   absolute: {
-    name: '絕對零度', color: '#5fd0e8', desc: '完全凍結<br>定住敵人',
-    cost: 300, range: 3.0, fireRate: 0.9, dmg: 32, pierce: 2, splash: 1.8,
-    slowPct: 1.0, slowDur: 1.2, bulletSpeed: 10, bulletColor: '#e8ffff', ocBase: 300,
-    up: [ { cost: 170, dmg: 58, slowDur: 1.5, splash: 2.0, range: 3.3 },
-          { cost: 360, dmg: 105, slowDur: 2.0, splash: 2.3, range: 3.6 } ]
+    /* 單點硬凍結:只定住最前面那隻(小濺射),剋 boss/大物,但對成群小兵無力
+       ——濺射刻意壓很小,否則會把整個畫面鎖死;大範圍減速交給姐妹塔暴風雪 */
+    name: '絕對零度', color: '#5fd0e8', desc: '單點完全凍結<br>剋大物·對群無力',
+    cost: 300, range: 3.0, fireRate: 0.85, dmg: 60, pierce: 4, splash: 0.7,
+    slowPct: 1.0, slowDur: 1.3, bulletSpeed: 10, bulletColor: '#e8ffff', ocBase: 300,
+    up: [ { cost: 170, dmg: 110, slowDur: 1.6, splash: 0.9, range: 3.3 },
+          { cost: 360, dmg: 210, slowDur: 2.0, splash: 1.1, range: 3.6 } ]
   },
   railgun: {
     name: '軌道炮', color: '#8b3bd6', desc: '貫穿一直線<br>穿透全部',
