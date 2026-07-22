@@ -74,6 +74,8 @@
   }
   .act.sell { background: #3a4054; color: #cfd6e8; }
   .act.danger { background: #ff6b6b; color: #2b0000; }
+  .act.evo { padding: 8px 9px; font-size: 12px; background: #7de08a; color: #08260f; }
+  .act.oc { background: #ffd24a; color: #2b2200; }
   .act:disabled { background: #3a4054; color: #8891a8; cursor: default; }
 
   .overlay {
@@ -134,11 +136,11 @@
 <div class="overlay" id="menu">
   <h1>方塊塔防</h1>
   <p>敵人會沿著軌道走向你的基地。在空地上蓋塔攔下它們。<br>
-     四種塔各有專長,沒有一種能單獨應付所有敵人。</p>
+     四種塔各有專長,升到滿級後還能<b>進化</b>成更強的進階塔。</p>
   <p class="legend">
     先在下方商店選一種塔,再點地圖空地放置 · 點自己的塔可升級或拆除<br>
-    花錢的動作都會先問過你才執行,不怕點錯<br>
-    按「出擊」才會放出下一波,兩波之間可以慢慢想
+    塔升到 Lv.3 後可選一條路線<b>進化</b>(共 8 種進階塔);進化塔滿級後還能<b>無盡強化</b><br>
+    花錢的動作都會先問過你才執行,不怕點錯 · 按「出擊」才會放出下一波
   </p>
   <div class="maps" id="mapPick"></div>
   <button class="btn" id="startBtn">開始防守</button>
@@ -175,37 +177,109 @@
    gun 通用但破甲差 → armored 逼你蓋 pierce
    swarm 數量多 → 單體塔來不及打,逼你蓋 splash
    後期敵人速度快、血厚 → 過路時間不夠,逼你蓋 frost 拉長輸出視窗 */
+/* 塔分兩層:4 個基礎塔(商店買得到)升到 Lv.3 後,可從 evolve 的兩條分支
+   擇一「進化」成進階塔——進階塔又有自己的 Lv.1→3,滿級後還能無盡強化。
+   進階塔的 cost 只用來顯示/拆塔退款推算,實際取得靠進化。
+   ocBase 是無盡強化的基礎費用(進階塔專用)。 */
 const TOWERS = {
+  /* ---- 基礎塔(商店販售)---- */
   gun: {
     name: '機槍塔', color: '#4ea8ff', desc: '高射速單體<br>破甲差',
     cost: 60, range: 2.6, fireRate: 2.6, dmg: 11, pierce: 2, splash: 0,
     slowPct: 0, slowDur: 0, bulletSpeed: 13, bulletColor: '#9ed4ff',
     up: [ { cost: 55, dmg: 22, range: 2.9, fireRate: 3.0 },
-          { cost: 130, dmg: 50, range: 3.2, fireRate: 3.4, pierce: 4 } ]
+          { cost: 130, dmg: 50, range: 3.2, fireRate: 3.4, pierce: 4 } ],
+    evolve: [ { key: 'gatling', cost: 220 }, { key: 'sniper', cost: 220 } ]
   },
   splash: {
     name: '爆破塔', color: '#ff8a4e', desc: '範圍濺射<br>射速慢',
     cost: 95, range: 2.4, fireRate: 1.0, dmg: 26, pierce: 6, splash: 1.3,
     slowPct: 0, slowDur: 0, bulletSpeed: 8, bulletColor: '#ffb987',
     up: [ { cost: 85, dmg: 46, splash: 1.55, range: 2.6, fireRate: 1.1 },
-          { cost: 190, dmg: 78, splash: 1.85, range: 2.8, fireRate: 1.25, pierce: 10 } ]
+          { cost: 190, dmg: 78, splash: 1.85, range: 2.8, fireRate: 1.25, pierce: 10 } ],
+    evolve: [ { key: 'flame', cost: 230 }, { key: 'howitzer', cost: 240 } ]
   },
   frost: {
     name: '冰霜塔', color: '#6ee7e0', desc: '範圍減速<br>幾乎不輸出',
     cost: 75, range: 2.8, fireRate: 1.1, dmg: 3, pierce: 0, splash: 1.5,
     slowPct: 0.45, slowDur: 1.6, bulletSpeed: 9, bulletColor: '#b6fffb',
     up: [ { cost: 70, slowPct: 0.58, range: 3.1, dmg: 6 },
-          { cost: 160, slowPct: 0.70, slowDur: 2.2, range: 3.5, dmg: 10 } ]
+          { cost: 160, slowPct: 0.70, slowDur: 2.2, range: 3.5, dmg: 10 } ],
+    evolve: [ { key: 'blizzard', cost: 210 }, { key: 'absolute', cost: 230 } ]
   },
   pierce: {
     name: '穿甲炮', color: '#c78bff', desc: '慢速高傷<br>無視護甲',
     cost: 120, range: 3.6, fireRate: 0.6, dmg: 95, pierce: 99, splash: 0,
     slowPct: 0, slowDur: 0, bulletSpeed: 20, bulletColor: '#e0c4ff',
     up: [ { cost: 110, dmg: 220, range: 3.9, fireRate: 0.65 },
-          { cost: 240, dmg: 440, range: 4.3, fireRate: 0.8 } ]
+          { cost: 240, dmg: 440, range: 4.3, fireRate: 0.8 } ],
+    evolve: [ { key: 'railgun', cost: 260 }, { key: 'prism', cost: 260 } ]
+  },
+
+  /* ---- 進階塔(由進化取得,順序附加在基礎塔之後,不可調換)---- */
+  gatling: {
+    name: '加特林', color: '#2e7fd6', desc: '極致射速<br>彈幕壓制',
+    cost: 300, range: 3.2, fireRate: 6.0, dmg: 55, pierce: 5, splash: 0,
+    slowPct: 0, slowDur: 0, bulletSpeed: 16, bulletColor: '#9ed4ff', ocBase: 320,
+    up: [ { cost: 190, dmg: 100, fireRate: 7.0, range: 3.4, pierce: 7 },
+          { cost: 400, dmg: 185, fireRate: 8.0, range: 3.6, pierce: 10 } ]
+  },
+  sniper: {
+    name: '狙擊塔', color: '#1f5fbf', desc: '超遠射程<br>鎖定血最厚', targetMode: 'strong',
+    cost: 300, range: 6.0, fireRate: 1.0, dmg: 270, pierce: 20, splash: 0,
+    slowPct: 0, slowDur: 0, bulletSpeed: 26, bulletColor: '#dfe9ff', ocBase: 320,
+    up: [ { cost: 190, dmg: 540, fireRate: 1.15, range: 6.5, pierce: 40 },
+          { cost: 400, dmg: 1080, fireRate: 1.3, range: 7.0, pierce: 99 } ]
+  },
+  flame: {
+    name: '火焰塔', color: '#ff5722', desc: '濺射+灼燒<br>持續掉血',
+    cost: 300, range: 2.6, fireRate: 2.2, dmg: 30, pierce: 4, splash: 1.4,
+    slowPct: 0, slowDur: 0, burnDps: 55, burnDur: 2.0,
+    bulletSpeed: 10, bulletColor: '#ff9a3c', ocBase: 300,
+    up: [ { cost: 180, dmg: 52, splash: 1.6, burnDps: 110, range: 2.8 },
+          { cost: 380, dmg: 90, splash: 1.9, burnDps: 220, burnDur: 2.5, pierce: 8, range: 3.0 } ]
+  },
+  howitzer: {
+    name: '榴彈炮', color: '#c0552a', desc: '超大範圍<br>重砲轟炸',
+    cost: 320, range: 3.0, fireRate: 0.9, dmg: 100, pierce: 12, splash: 2.6,
+    slowPct: 0, slowDur: 0, bulletSpeed: 7, bulletColor: '#ffb987', ocBase: 340,
+    up: [ { cost: 190, dmg: 175, splash: 3.0, range: 3.2, pierce: 18 },
+          { cost: 400, dmg: 300, splash: 3.6, fireRate: 1.0, range: 3.4, pierce: 28 } ]
+  },
+  blizzard: {
+    name: '暴風雪', color: '#3aa8c0', desc: '強力減速<br>大範圍壓制',
+    cost: 280, range: 3.2, fireRate: 1.3, dmg: 20, pierce: 2, splash: 2.0,
+    slowPct: 0.80, slowDur: 1.8, bulletSpeed: 10, bulletColor: '#c8f5ff', ocBase: 300,
+    up: [ { cost: 160, dmg: 36, slowPct: 0.86, splash: 2.3, range: 3.5 },
+          { cost: 350, dmg: 62, slowPct: 0.92, slowDur: 2.4, splash: 2.6, range: 3.8 } ]
+  },
+  absolute: {
+    name: '絕對零度', color: '#5fd0e8', desc: '完全凍結<br>定住敵人',
+    cost: 300, range: 3.0, fireRate: 0.9, dmg: 32, pierce: 2, splash: 1.8,
+    slowPct: 1.0, slowDur: 1.2, bulletSpeed: 10, bulletColor: '#e8ffff', ocBase: 300,
+    up: [ { cost: 170, dmg: 58, slowDur: 1.5, splash: 2.0, range: 3.3 },
+          { cost: 360, dmg: 105, slowDur: 2.0, splash: 2.3, range: 3.6 } ]
+  },
+  railgun: {
+    name: '軌道炮', color: '#8b3bd6', desc: '貫穿一直線<br>穿透全部',
+    cost: 340, range: 5.0, fireRate: 0.8, dmg: 210, pierce: 99, splash: 0, beam: true,
+    slowPct: 0, slowDur: 0, bulletSpeed: 30, bulletColor: '#d0a8ff', ocBase: 360,
+    up: [ { cost: 220, dmg: 430, fireRate: 0.9, range: 5.5 },
+          { cost: 440, dmg: 840, fireRate: 1.0, range: 6.0 } ]
+  },
+  prism: {
+    name: '光稜塔', color: '#b06bff', desc: '超高單體<br>鎖定血最厚', targetMode: 'strong',
+    cost: 340, range: 4.5, fireRate: 0.7, dmg: 620, pierce: 99, splash: 0,
+    slowPct: 0, slowDur: 0, bulletSpeed: 22, bulletColor: '#f0d0ff', ocBase: 360,
+    up: [ { cost: 220, dmg: 1280, fireRate: 0.8, range: 4.8 },
+          { cost: 440, dmg: 2560, fireRate: 0.95, range: 5.2 } ]
   }
 };
-const TOWER_KEYS = ['gun', 'splash', 'frost', 'pierce'];
+/* 存檔碼靠索引認塔——順序一旦定下、只能往後追加,不能調換(見 CODE_VER 註解) */
+const TOWER_KEYS = ['gun', 'splash', 'frost', 'pierce',
+                    'gatling', 'sniper', 'flame', 'howitzer',
+                    'blizzard', 'absolute', 'railgun', 'prism'];
+const SHOP_KEYS = ['gun', 'splash', 'frost', 'pierce'];   // 商店只賣基礎塔
 const SELL_RATE = 0.6;   // 拆塔退回已投入總額的比例
 
 /* 敵人原型。armor 是固定減傷,pierce 值高的塔才吃得下 */
@@ -219,15 +293,20 @@ const ENEMIES = {
 };
 
 /* 波次成長曲線。hp/數量隨波數指數成長,靠 waveComp 決定當波組成 */
+/* ★ 破牆設計:原本血量每波 +18.5%(每 ~4 波翻倍),但玩家火力有天花板
+   (地圖有限 × 每塔只 3 級),所以最佳解也撐不過 ~26 波。
+   現在雙管齊下:(1) 血量成長降到 1.15(每 ~5 波翻倍,中期不再直線陡升)
+   (2) 收入隨波數成長跟上血量——配合「進化」拉高 DPS 上限與「無盡強化」這個錢坑,
+   讓後期能一直買強化去追血量,達成真正的無限。早期手感只會更輕鬆,不會變難。 */
 const WAVE = {
-  hpGrowth: 1.185,      // 每波血量倍率
+  hpGrowth: 1.15,       // 每波血量倍率(原 1.185)
   speedGrowth: 1.011,   // 每波速度倍率(成長很慢,避免後期無法反應)
   armorGrowth: 1.05,    // 護甲也要成長,否則傷害一升上去固定減傷就形同虛設
-  bountyGrowth: 1.03,
+  bountyGrowth: 1.10,   // 擊殺賞金隨波數成長,後期才付得起無盡強化(原 1.03)
   baseGold: 190,
   baseLives: 20,
-  clearBonus: 9,        // 過波獎勵基底
-  clearBonusGrowth: 0.9,// 每波再多給
+  clearBonus: 12,       // 過波獎勵基底
+  clearBonusGrowth: 2.5,// 每波再多給(隨波數放大,原 0.9)
   spawnGap: 0.6,        // 同一波內出怪間隔(秒),越短敵人越擠、濺射越有價值
   bossEvery: 8          // 每 N 波出一次 boss
 };
@@ -327,7 +406,7 @@ const CODE_WIDTH = 2;           // 每筆紀錄 2 個字(波數上限 1023)
      - 改模型、顏色、名稱、說明(碼裡根本沒存這些)
      - 改數值(傷害/射程/費用)
      - 往 TOWER_KEYS 或 MAPS 的「最後面」追加新項目 */
-const CODE_VER = 1;
+const CODE_VER = 2;   // v2:塔種擴充到 12、續玩碼每塔改 5 字並多存無盡強化層數
 const VER_ERR = '這是舊版的碼,格式已經改過,沒辦法相容(請在新版重新產生)';
 
 function b32(n, width) {
@@ -410,9 +489,10 @@ function canSaveResume() { return state === 'playing' && !waveActive; }
 
 function exportResume() {
   let p = b32(CODE_VER, 1) + b32(mapIndex, 1) + b32(wave, 2) + b32(gold, 3) + b32(Math.max(0, lives), 1);
-  for (const t of towers) {
-    p += B32[TOWER_KEYS.indexOf(t.kind) * 3 + t.lvl];
-    p += b32(t.gy * map.cols + t.gx, 2);
+  for (const t of towers) {          // 每座塔 5 字:種類1 + (等級+無盡層數)2 + 位置2
+    p += B32[TOWER_KEYS.indexOf(t.kind)];        // 種類索引 0–31
+    p += b32(t.lvl + (t.oc || 0) * 3, 2);        // 等級(0–2)與無盡強化層數打包
+    p += b32(t.gy * map.cols + t.gx, 2);         // 格子位置
   }
   return groupCode(RESUME_PREFIX + p + codeSum(p));
 }
@@ -427,7 +507,7 @@ function importResume(raw) {
   const p = body.slice(0, -1), ck = body.slice(-1);
   if (codeSum(p) !== ck) return { ok: false, msg: '檢查碼不符,應該是打錯了某個字' };
   if (unb32(p.slice(0, 1)) !== CODE_VER) return { ok: false, msg: VER_ERR };
-  if ((p.length - HEAD_W) % 3 !== 0) return { ok: false, msg: '長度不對——可能漏字多字,也可能是舊版產生的碼' };
+  if ((p.length - HEAD_W) % 5 !== 0) return { ok: false, msg: '長度不對——可能漏字多字,也可能是舊版產生的碼' };
 
   const mi = unb32(p.slice(1, 2)), w = unb32(p.slice(2, 4)),
         g = unb32(p.slice(4, 7)), lv = unb32(p.slice(7, 8));
@@ -439,24 +519,26 @@ function importResume(raw) {
   const reject = m => { selectMap(prevMap); return { ok: false, msg: m }; };  // 驗不過就切回去
 
   const list = [], used = [];
-  for (let i = HEAD_W; i < p.length; i += 3) {
-    const kc = B32.indexOf(p[i]), pos = unb32(p.slice(i + 1, i + 3));
-    if (kc < 0 || pos < 0) return reject('續玩碼含有無效字元');
-    const kind = TOWER_KEYS[Math.floor(kc / 3)], lvl = kc % 3;
+  for (let i = HEAD_W; i < p.length; i += 5) {
+    const kc = B32.indexOf(p[i]);
+    const lvloc = unb32(p.slice(i + 1, i + 3)), pos = unb32(p.slice(i + 3, i + 5));
+    if (kc < 0 || lvloc < 0 || pos < 0) return reject('續玩碼含有無效字元');
+    const kind = TOWER_KEYS[kc], lvl = lvloc % 3, oc = Math.floor(lvloc / 3);
     if (!kind) return reject('續玩碼裡有不存在的塔種');
     const gx = pos % map.cols, gy = Math.floor(pos / map.cols);
     // 位置驗證順便擋掉「別張地圖的存檔」——格子對不上就不給載
     if (gy >= map.rows || !buildable[gy][gx]) return reject('續玩碼裡有不能蓋塔的位置,可能不是這張地圖的存檔');
     if (used.indexOf(pos) >= 0) return reject('續玩碼裡有兩座塔疊在同一格');
     used.push(pos);
-    list.push({ kind, lvl, gx, gy });
+    list.push({ kind, lvl, oc, gx, gy });
   }
 
   startGame();                       // 先把場面清乾淨,再套上存檔的狀態
   wave = w; gold = g; lives = lv;
   for (const t of list) {
-    const nt = makeTower(t.kind, t.gx, t.gy);
+    const nt = makeTower(t.kind, t.gx, t.gy);        // 進階塔的 kind 已直接是進階種類
     for (let i = 0; i < t.lvl; i++) applyUpgrade(nt);
+    for (let i = 0; i < t.oc; i++) applyOvercharge(nt);
     towers.push(nt);
   }
   refreshUI();
@@ -595,9 +677,11 @@ function towerAt(gx, gy) {
 function makeTower(kind, gx, gy) {
   const d = TOWERS[kind];
   return {
-    kind, gx, gy, x: gx + 0.5, y: gy + 0.5, lvl: 0, spent: d.cost,
+    kind, gx, gy, x: gx + 0.5, y: gy + 0.5, lvl: 0, spent: d.cost, oc: 0,
     range: d.range, fireRate: d.fireRate, dmg: d.dmg, pierce: d.pierce,
     splash: d.splash, slowPct: d.slowPct, slowDur: d.slowDur,
+    burnDps: d.burnDps || 0, burnDur: d.burnDur || 0,
+    targetMode: d.targetMode || 'far', beam: !!d.beam,
     cd: 0, angle: -Math.PI / 2
   };
 }
@@ -605,6 +689,23 @@ function applyUpgrade(t) {
   const u = TOWERS[t.kind].up[t.lvl];
   for (const k in u) if (k !== 'cost') t[k] = u[k];
   t.lvl++; t.spent += u.cost;
+}
+/* 進化:把整座塔換成進階原型,等級歸零(進階塔又有自己的 Lv.1→3) */
+function evolveTower(t, key) {
+  const d = TOWERS[key];
+  t.kind = key; t.lvl = 0; t.oc = 0;
+  t.range = d.range; t.fireRate = d.fireRate; t.dmg = d.dmg; t.pierce = d.pierce;
+  t.splash = d.splash; t.slowPct = d.slowPct; t.slowDur = d.slowDur;
+  t.burnDps = d.burnDps || 0; t.burnDur = d.burnDur || 0;
+  t.targetMode = d.targetMode || 'far'; t.beam = !!d.beam;
+  t.cd = 0;
+}
+/* 無盡強化:每買一次 +8% 傷害,費用只依已買次數(存檔重建才算得對) */
+function ocCost(t) { return Math.round((TOWERS[t.kind].ocBase || 300) * Math.pow(1.15, t.oc || 0)); }
+function applyOvercharge(t) {
+  t.spent += ocCost(t);
+  t.dmg = Math.round(t.dmg * 1.08);
+  t.oc = (t.oc || 0) + 1;
 }
 function buildTower(kind, gx, gy) {
   const d = TOWERS[kind];
@@ -622,6 +723,23 @@ function upgradeTower(t) {
   gold -= u.cost;
   applyUpgrade(t);
   tone(480, 130, 0.07, 'triangle', 780);
+  refreshUI();
+}
+function doEvolve(t, branch) {
+  const ev = (TOWERS[t.kind].evolve || [])[branch];
+  if (!ev || gold < ev.cost) return;
+  gold -= ev.cost;
+  t.spent += ev.cost;
+  evolveTower(t, ev.key);
+  tone(300, 170, 0.08, 'triangle', 920);
+  refreshUI();
+}
+function doOvercharge(t) {
+  const cost = ocCost(t);
+  if (gold < cost) return;
+  gold -= cost;
+  applyOvercharge(t);
+  tone(620, 120, 0.06, 'square', 1000);
   refreshUI();
 }
 function sellTower(t) {
@@ -663,7 +781,7 @@ function spawnEnemy(type) {
     type, hp, maxHp: hp,
     speed: p.speed * spMul, armor, size: p.size, color: p.color,
     bounty: Math.round(p.bounty * Math.pow(WAVE.bountyGrowth, wave - 1)),
-    d: 0, slowT: 0, slowPct: 0, hitFlash: 0
+    d: 0, slowT: 0, slowPct: 0, hitFlash: 0, burnT: 0, burnDps: 0
   });
 }
 function endWave() {
@@ -691,6 +809,12 @@ function update(dt) {
     const e = enemies[i];
     if (e.slowT > 0) { e.slowT -= dt; if (e.slowT <= 0) e.slowPct = 0; }
     if (e.hitFlash > 0) e.hitFlash -= dt;
+    if (e.burnT > 0) {                     // 灼燒:持續掉血、無視護甲
+      e.burnT -= dt;
+      e.hp -= e.burnDps * dt;
+      if (e.hitFlash <= 0) e.hitFlash = 0.05;
+      if (e.hp <= 0) { enemies.splice(i, 1); gold += e.bounty; refreshUI(); continue; }
+    }
     e.d += e.speed * (1 - e.slowPct) * dt;
     if (e.d >= pathLen) {           // 走到底 → 扣命
       enemies.splice(i, 1);
@@ -744,25 +868,49 @@ function update(dt) {
   if (waveActive && !spawnQueue.length && !enemies.length) endWave();
 }
 
-/* 選目標:射程內走最遠的那隻(最接近基地,威脅最大) */
+/* 選目標:預設鎖射程內走最遠的(最接近基地);targetMode==='strong' 改鎖血最厚的 */
 function pickTarget(t) {
-  let best = null, bestD = -1;
+  let best = null, bestKey = -1;
+  const strong = t.targetMode === 'strong';
   for (const e of enemies) {
     const p = posAt(e.d);
     if (Math.hypot(p.x - t.x, p.y - t.y) > t.range) continue;
-    if (e.d > bestD) { bestD = e.d; best = e; }
+    const key = strong ? e.hp : e.d;
+    if (key > bestKey) { bestKey = key; best = e; }
   }
   return best;
 }
 
 function fire(t, target) {
+  if (t.beam) { fireBeam(t, target); return; }
   bullets.push({
     x: t.x, y: t.y, target, last: posAt(target.d), speed: t.bulletSpeed || TOWERS[t.kind].bulletSpeed,
     color: TOWERS[t.kind].bulletColor, dmg: t.dmg, pierce: t.pierce,
-    splash: t.splash, slowPct: t.slowPct, slowDur: t.slowDur, life: 2.5
+    splash: t.splash, slowPct: t.slowPct, slowDur: t.slowDur,
+    burnDps: t.burnDps || 0, burnDur: t.burnDur || 0, life: 2.5
   });
-  const f = { gun: 700, splash: 200, frost: 900, pierce: 300 }[t.kind];
+  const f = { gun: 700, splash: 200, frost: 900, pierce: 300 }[t.kind] || 500;
   tone(f, 45, 0.028, t.kind === 'splash' ? 'sawtooth' : 'square');
+}
+
+/* 軌道炮:瞬發光束,一次打穿 tower→target 方向、射程內、貼近射線的所有敵人 */
+function fireBeam(t, target) {
+  const tp = posAt(target.d);
+  const len = Math.hypot(tp.x - t.x, tp.y - t.y) || 1;
+  const ux = (tp.x - t.x) / len, uy = (tp.y - t.y) / len;
+  const width = 0.42;
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    const p = posAt(e.d);
+    const rx = p.x - t.x, ry = p.y - t.y;
+    const along = rx * ux + ry * uy;               // 沿射線方向的投影
+    if (along < 0 || along > t.range) continue;
+    if (Math.abs(rx * uy - ry * ux) > width) continue;   // 垂直射線的距離
+    damage(e, t.dmg, t.pierce);
+  }
+  effects.push({ beam: true, x0: t.x, y0: t.y, x1: t.x + ux * t.range, y1: t.y + uy * t.range,
+                 t: 0.14, max: 0.14, color: TOWERS[t.kind].bulletColor });
+  tone(160, 60, 0.04, 'sawtooth', 90);
 }
 
 /* 命中:算實際傷害(護甲被 pierce 抵掉的部分不生效) */
@@ -790,10 +938,12 @@ function impact(b) {
       const p = posAt(e.d);
       if (Math.hypot(p.x - b.x, p.y - b.y) > b.splash) continue;
       if (b.slowDur > 0) { e.slowPct = Math.max(e.slowPct, b.slowPct); e.slowT = b.slowDur; }
+      if (b.burnDps > 0) { e.burnDps = Math.max(e.burnDps, b.burnDps); e.burnT = b.burnDur; }
       damage(e, b.dmg, b.pierce);
     }
   } else if (b.target && b.target.hp > 0 && enemies.indexOf(b.target) >= 0) {
     if (b.slowDur > 0) { b.target.slowPct = Math.max(b.target.slowPct, b.slowPct); b.target.slowT = b.slowDur; }
+    if (b.burnDps > 0) { b.target.burnDps = Math.max(b.target.burnDps, b.burnDps); b.target.burnT = b.burnDur; }
     damage(b.target, b.dmg, b.pierce);
   }
 }
@@ -909,12 +1059,15 @@ function draw() {
       const t = confirmAct.tower;
       ctx.strokeStyle = 'rgba(255,192,67,.45)'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(PX(t.x), PY(t.y), S(t.range), 0, Math.PI * 2); ctx.stroke();
-      if (confirmAct.kind === 'upgrade') {
-        const u = TOWERS[t.kind].up[t.lvl];
+      if (confirmAct.kind === 'upgrade' || confirmAct.kind === 'evolve') {
+        // 升級/進化都用綠色虛線畫出「之後的新射程」
+        const nr = confirmAct.kind === 'evolve'
+          ? TOWERS[TOWERS[t.kind].evolve[confirmAct.branch].key].range
+          : (TOWERS[t.kind].up[t.lvl].range != null ? TOWERS[t.kind].up[t.lvl].range : t.range);
         ctx.strokeStyle = '#7de08a'; ctx.setLineDash([6, 5]);
-        ctx.beginPath(); ctx.arc(PX(t.x), PY(t.y), S(u.range != null ? u.range : t.range), 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(PX(t.x), PY(t.y), S(nr), 0, Math.PI * 2);
         ctx.stroke(); ctx.setLineDash([]);
-      } else {
+      } else if (confirmAct.kind === 'sell') {
         ctx.strokeStyle = '#ff6b6b'; ctx.lineWidth = 3;
         ctx.strokeRect(PX(t.gx) + 1.5, PY(t.gy) + 1.5, cell - 3, cell - 3);
       }
@@ -944,9 +1097,21 @@ function draw() {
     }
   }
 
-  // 爆炸
+  // 爆炸 / 光束
   for (const ef of effects) {
     const k = ef.t / ef.max;
+    if (ef.beam) {                    // 軌道炮光束
+      ctx.globalAlpha = k * 0.85;
+      ctx.strokeStyle = ef.color;
+      ctx.lineCap = 'round';
+      ctx.lineWidth = S(0.16) * (0.6 + k);
+      ctx.beginPath();
+      ctx.moveTo(PX(ef.x0), PY(ef.y0));
+      ctx.lineTo(PX(ef.x1), PY(ef.y1));
+      ctx.stroke();
+      ctx.globalAlpha = 1; ctx.lineCap = 'butt';
+      continue;
+    }
     ctx.globalAlpha = k * 0.55;
     ctx.fillStyle = ef.color;
     ctx.beginPath();
@@ -964,7 +1129,11 @@ function draw() {
     ctx.fillStyle = e.hitFlash > 0 ? '#ffffff' : e.color;
     ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
     if (e.slowPct > 0) {
-      ctx.fillStyle = 'rgba(110,231,224,.42)';
+      ctx.fillStyle = e.slowPct >= 0.99 ? 'rgba(180,240,255,.62)' : 'rgba(110,231,224,.42)';
+      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    }
+    if (e.burnT > 0) {                 // 灼燒紅橙罩層
+      ctx.fillStyle = 'rgba(255,110,40,.4)';
       ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
     }
     if (e.type === 'armored' || e.type === 'boss') {   // 重甲標記
@@ -1031,7 +1200,21 @@ function renderConfirm() {
     cmp('濺射', t.splash, u.splash);
     cmp('減速', t.slowPct, u.slowPct, v => Math.round(v * 100) + '%');
     cmp('破甲', t.pierce, u.pierce);
+    cmp('灼燒', t.burnDps, u.burnDps);
     detail = p.join(' · ');
+  } else if (c.kind === 'evolve') {
+    const t = c.tower, ev = TOWERS[t.kind].evolve[c.branch], d = TOWERS[ev.key];
+    color = d.color; cost = ev.cost; okLabel = '確認進化';
+    title = '進化為 ' + d.name;
+    detail = '傷害 ' + d.dmg + ' · 射速 ' + d.fireRate.toFixed(1) + '/s · 射程 ' + d.range.toFixed(1) +
+             (d.splash > 0 ? ' · 濺射 ' + d.splash : '') +
+             (d.slowPct > 0 ? ' · 減速 ' + Math.round(d.slowPct * 100) + '%' : '') +
+             (d.burnDps > 0 ? ' · 灼燒 ' + d.burnDps : '') + ' · 可再升 3 級';
+  } else if (c.kind === 'overcharge') {
+    const t = c.tower, d = TOWERS[t.kind];
+    color = d.color; cost = ocCost(t); okLabel = '確認強化';
+    title = '無盡強化 ' + d.name + ' → ⚡' + ((t.oc || 0) + 1);
+    detail = '傷害 ' + t.dmg + ' → ' + Math.round(t.dmg * 1.08) + '(+8%)· 可無限疊加';
   } else {
     const t = c.tower, d = TOWERS[t.kind];
     color = d.color; cost = -Math.floor(t.spent * SELL_RATE); okLabel = '確認拆除'; danger = true;
@@ -1065,6 +1248,10 @@ function commitConfirm() {
     refreshUI();
   } else if (c.kind === 'upgrade') {
     upgradeTower(c.tower);
+  } else if (c.kind === 'evolve') {
+    doEvolve(c.tower, c.branch);
+  } else if (c.kind === 'overcharge') {
+    doOvercharge(c.tower);
   } else {
     sellTower(c.tower);
   }
@@ -1074,7 +1261,7 @@ function renderPanel() {
   if (confirmAct && state === 'playing') { renderConfirm(); return; }
   // 只有「選到一座已存在的塔」才切換成資訊面板,其餘時間商店常駐
   if (!(selected && selected.kind === 'tower' && state === 'playing')) {
-    panelEl.innerHTML = '<div class="shop">' + TOWER_KEYS.map(k => {
+    panelEl.innerHTML = '<div class="shop">' + SHOP_KEYS.map(k => {
       const d = TOWERS[k];
       const poor = gold < d.cost;
       return '<div class="tcard' + (poor ? ' poor' : '') + (pendingKind === k ? ' sel' : '') +
@@ -1094,19 +1281,40 @@ function renderPanel() {
   const d = TOWERS[t.kind];
   const u = d.up[t.lvl];
   const dps = (t.dmg * t.fireRate).toFixed(0);
+  // 升級用完之後的動作:基礎塔→進化(兩顆分支鈕)、進階塔→無盡強化(可重複買)
+  let actions;
+  if (u) {
+    actions = '<button class="act" id="upBtn"' + (gold < u.cost ? ' disabled' : '') + '>升級 🪙' + u.cost + '</button>';
+  } else if (d.evolve) {
+    actions = d.evolve.map((e, i) => {
+      const ad = TOWERS[e.key];
+      return '<button class="act evo" data-evo="' + i + '"' + (gold < e.cost ? ' disabled' : '') +
+             '>▲' + ad.name + ' 🪙' + e.cost + '</button>';
+    }).join('');
+  } else {
+    const oc = ocCost(t);
+    actions = '<button class="act oc" id="ocBtn"' + (gold < oc ? ' disabled' : '') +
+              '>⚡強化+8% 🪙' + oc + '</button>';
+  }
   panelEl.innerHTML =
     '<div class="info">' +
       '<span class="ic" style="width:26px;height:26px;border-radius:4px;background:' + d.color + '"></span>' +
-      '<span class="txt"><span class="h">' + d.name + ' Lv.' + (t.lvl + 1) + '</span><br>' +
+      '<span class="txt"><span class="h">' + d.name + ' Lv.' + (t.lvl + 1) +
+      (t.oc ? ' ⚡' + t.oc : '') + '</span><br>' +
       '<span class="s">傷害 ' + t.dmg + ' · 射速 ' + t.fireRate.toFixed(1) + '/s · 射程 ' + t.range.toFixed(1) +
       ' · DPS ' + dps + (t.splash > 0 ? ' · 濺射 ' + t.splash : '') +
-      (t.slowPct > 0 ? ' · 減速 ' + Math.round(t.slowPct * 100) + '%' : '') + '</span></span>' +
-      (u ? '<button class="act" id="upBtn"' + (gold < u.cost ? ' disabled' : '') + '>升級 🪙' + u.cost + '</button>'
-         : '<button class="act" disabled>已滿級</button>') +
+      (t.slowPct > 0 ? ' · 減速 ' + Math.round(t.slowPct * 100) + '%' : '') +
+      (t.burnDps > 0 ? ' · 灼燒 ' + t.burnDps : '') + '</span></span>' +
+      actions +
       '<button class="act sell" id="sellBtn">拆除 +🪙' + Math.floor(t.spent * SELL_RATE) + '</button>' +
     '</div>';
   const ub = document.getElementById('upBtn');
   if (ub) ub.addEventListener('click', () => { confirmAct = { kind: 'upgrade', tower: t }; renderPanel(); });
+  const ocb = document.getElementById('ocBtn');
+  if (ocb) ocb.addEventListener('click', () => { confirmAct = { kind: 'overcharge', tower: t }; renderPanel(); });
+  for (const eb of panelEl.querySelectorAll('[data-evo]')) {
+    eb.addEventListener('click', () => { confirmAct = { kind: 'evolve', tower: t, branch: +eb.dataset.evo }; renderPanel(); });
+  }
   document.getElementById('sellBtn').addEventListener('click',
     () => { confirmAct = { kind: 'sell', tower: t }; renderPanel(); });
 }
