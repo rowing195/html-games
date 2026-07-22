@@ -31,6 +31,11 @@
     background: #3a4054; color: #cfd6e8; cursor: pointer; font-family: inherit; min-width: 52px;
   }
   #speedBtn.fast { background: #6ee7e0; color: #06302e; }
+  #autoBtn {
+    border: 0; border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 800;
+    background: #3a4054; color: #cfd6e8; cursor: pointer; font-family: inherit;
+  }
+  #autoBtn.on { background: #7de08a; color: #08260f; }
 
   /* 地圖選擇 */
   .maps { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
@@ -126,6 +131,7 @@
     <span class="sp"></span>
     <span style="opacity:.6;font-size:13px">最高 <b id="best">0</b></span>
     <button id="speedBtn" title="加速。整數倍,物理完全一致">1×</button>
+    <button id="autoBtn" title="開啟後每波自動出擊,適合掛機">🔁 掛機</button>
     <button id="saveBtn" title="存下目前進度,換裝置接著玩">💾 存檔</button>
     <button id="waveBtn">出擊 ▶</button>
   </div>
@@ -140,7 +146,8 @@
   <p class="legend">
     先在下方商店選一種塔,再點地圖空地放置 · 點自己的塔可升級或拆除<br>
     塔升到 Lv.3 後可選一條路線<b>進化</b>(共 8 種進階塔);進化塔滿級後還能<b>無盡強化</b><br>
-    花錢的動作都會先問過你才執行,不怕點錯 · 按「出擊」才會放出下一波
+    當心特殊敵人:<b>醫療兵</b>(綠十字)會奶回友軍、<b>絕緣體</b>(白圈)免疫減速凍結<br>
+    按「出擊」放下一波;開<b>🔁 掛機</b>則每波自動出擊,配合加速可放著跑
   </p>
   <div class="maps" id="mapPick"></div>
   <button class="btn" id="startBtn">開始防守</button>
@@ -289,6 +296,16 @@ const ENEMIES = {
   grunt:   { name: '雜兵', hp: 42,  speed: 1.35, armor: 1,  bounty: 4,  size: 0.30, color: '#7de08a' },
   swarm:   { name: '蟲群', hp: 22,  speed: 2.15, armor: 0,  bounty: 2,  size: 0.21, color: '#ffe066' },
   armored: { name: '重甲', hp: 105, speed: 0.95, armor: 8,  bounty: 8,  size: 0.35, color: '#9aa7c4' },
+  /* 疾行者:極快、極脆——懲罰有空隙的防線,逼你顧到整條路,冰系塔對牠特別有用 */
+  runner:  { name: '疾行者', hp: 18, speed: 3.05, armor: 0, bounty: 3, size: 0.19, color: '#a0ffea' },
+  /* 醫療兵:回復射程內友軍的血(自己不回,才殺得掉)。放著不管會讓整團變得很肉,
+     是一種「軟性 DPS 檢查」——逼你有能力在敵群裡優先融掉它。healDps 隨波數一起長。 */
+  healer:  { name: '醫療兵', hp: 66, speed: 1.2, armor: 2, bounty: 12, size: 0.30, color: '#ff7ec8',
+             healDps: 15, healRadius: 2.1 },
+  /* 絕緣體:免疫一切控制(減速/凍結不生效),只能硬砍。冰系塔對牠完全無效,
+     逼你留一手純輸出。灼燒屬於傷害不算控制,仍會生效。 */
+  immune:  { name: '絕緣體', hp: 96, speed: 1.55, armor: 4, bounty: 13, size: 0.32, color: '#f2e79a',
+             immune: true },
   /* 巨獸血量原本 900,佔掉整波總血量的 53%,中後期等於「只有牠算數」。
      降到 500 之後佔比約 38%,雜兵和蟲群才重新有存在感。 */
   boss:    { name: '巨獸', hp: 500, speed: 0.72, armor: 12, bounty: 59, size: 0.52, color: '#ff6b6b' }
@@ -321,6 +338,9 @@ function waveComp(w) {
   out.push({ type: 'grunt', count: 4 + Math.floor(w * 0.55) });
   if (w >= 3)  out.push({ type: 'swarm', count: 4 + Math.floor(w * 0.9) });
   if (w >= 5)  out.push({ type: 'armored', count: 1 + Math.floor((w - 4) * 0.5) });
+  if (w >= 7)  out.push({ type: 'runner', count: 2 + Math.floor((w - 6) * 0.6) });
+  if (w >= 9)  out.push({ type: 'healer', count: 1 + Math.floor((w - 8) * 0.2) });
+  if (w >= 12) out.push({ type: 'immune', count: 1 + Math.floor((w - 11) * 0.3) });
   if (w % WAVE.bossEvery === 0) out.push({ type: 'boss', count: Math.ceil(w / WAVE.bossEvery) });
   return out;
 }
@@ -666,6 +686,8 @@ let state = 'menu';          // menu / playing / dead
 let gold = 0, lives = 0, wave = 0;
 let towers = [], enemies = [], bullets = [], effects = [];
 let spawnQueue = [], spawnTimer = 0, waveActive = false;
+let autoWave = false, autoTimer = 0;   // 掛機:開啟後每波之間自動倒數出擊
+const AUTO_GAP = 2.5;                   // 自動出擊前的間隔(秒),留一點時間看場面/蓋塔
 let selected = null;         // {kind:'empty', gx, gy} 或 {kind:'tower', tower}
 let pendingKind = null;      // 已在商店選好、等著點格子放下的塔種
 let confirmAct = null;       // 待確認的花費動作 {kind:'build'|'upgrade'|'sell', ...}
@@ -783,11 +805,15 @@ function spawnEnemy(type) {
     type, hp, maxHp: hp,
     speed: p.speed * spMul, armor, size: p.size, color: p.color,
     bounty: Math.round(p.bounty * Math.pow(WAVE.bountyGrowth, wave - 1)),
+    immune: !!p.immune,                                   // 免疫減速/凍結
+    healDps: p.healDps ? Math.round(p.healDps * hpMul) : 0,  // 治療量跟著血量一起長
+    healRadius: p.healRadius || 0,
     d: 0, slowT: 0, slowPct: 0, hitFlash: 0, burnT: 0, burnDps: 0
   });
 }
 function endWave() {
   waveActive = false;
+  autoTimer = AUTO_GAP;      // 掛機模式下,清完一波就重新倒數下一波
   gold += Math.round(WAVE.clearBonus + wave * WAVE.clearBonusGrowth);
   tone(520, 220, 0.07, 'triangle', 760);
   refreshUI();
@@ -797,12 +823,31 @@ function endWave() {
 function update(dt) {
   if (state !== 'playing') return;
 
+  // 掛機:兩波之間自動倒數出擊(手動按「出擊」仍可隨時提前放)
+  if (autoWave && !waveActive) {
+    autoTimer -= dt;
+    if (autoTimer <= 0) startWave();
+  }
+
   // 出怪
   if (waveActive && spawnQueue.length) {
     spawnTimer -= dt;
     while (spawnTimer <= 0 && spawnQueue.length) {
       spawnEnemy(spawnQueue.shift());
       spawnTimer += WAVE.spawnGap;
+    }
+  }
+
+  // 醫療兵:回復射程內友軍的血(自己不回,才能被集火融掉)
+  for (const h of enemies) {
+    if (!h.healDps) continue;
+    const hp0 = posAt(h.d);
+    for (const e of enemies) {
+      if (e === h || e.hp >= e.maxHp) continue;
+      const pe = posAt(e.d);
+      if (Math.hypot(pe.x - hp0.x, pe.y - hp0.y) <= h.healRadius) {
+        e.hp = Math.min(e.maxHp, e.hp + h.healDps * dt);
+      }
     }
   }
 
@@ -939,12 +984,12 @@ function impact(b) {
       const e = enemies[i];
       const p = posAt(e.d);
       if (Math.hypot(p.x - b.x, p.y - b.y) > b.splash) continue;
-      if (b.slowDur > 0) { e.slowPct = Math.max(e.slowPct, b.slowPct); e.slowT = b.slowDur; }
+      if (b.slowDur > 0 && !e.immune) { e.slowPct = Math.max(e.slowPct, b.slowPct); e.slowT = b.slowDur; }
       if (b.burnDps > 0) { e.burnDps = Math.max(e.burnDps, b.burnDps); e.burnT = b.burnDur; }
       damage(e, b.dmg, b.pierce);
     }
   } else if (b.target && b.target.hp > 0 && enemies.indexOf(b.target) >= 0) {
-    if (b.slowDur > 0) { b.target.slowPct = Math.max(b.target.slowPct, b.slowPct); b.target.slowT = b.slowDur; }
+    if (b.slowDur > 0 && !b.target.immune) { b.target.slowPct = Math.max(b.target.slowPct, b.slowPct); b.target.slowT = b.slowDur; }
     if (b.burnDps > 0) { b.target.burnDps = Math.max(b.target.burnDps, b.burnDps); b.target.burnT = b.burnDur; }
     damage(b.target, b.dmg, b.pierce);
   }
@@ -1141,6 +1186,17 @@ function draw() {
     if (e.type === 'armored' || e.type === 'boss') {   // 重甲標記
       ctx.fillStyle = 'rgba(255,255,255,.5)';
       ctx.fillRect(cx - r * 0.45, cy - r * 0.45, r * 0.9, r * 0.9);
+    }
+    if (e.immune) {                    // 免控標記:白色外框圈(提醒:減速/凍結無效)
+      ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, r * 0.72, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (e.healDps) {                   // 醫療兵:治療光環 + 白十字
+      ctx.strokeStyle = 'rgba(120,224,138,.30)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, S(e.healRadius), 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(cx - r * 0.13, cy - r * 0.5, r * 0.26, r);
+      ctx.fillRect(cx - r * 0.5, cy - r * 0.13, r, r * 0.26);
     }
     const bw = r * 2, bh = Math.max(3, S(0.075));
     ctx.fillStyle = '#000';
@@ -1407,6 +1463,7 @@ function startGame() {
   gold = map.startGold; lives = map.startLives; wave = 0;
   towers = []; enemies = []; bullets = []; effects = [];
   spawnQueue = []; spawnTimer = 0; waveActive = false;
+  autoTimer = AUTO_GAP;                 // 保留掛機開關,但重開一局先重新倒數,不會立刻開打
   selected = null; pendingKind = null; confirmAct = null;
   menuEl.classList.add('hidden');
   overEl.classList.add('hidden');
@@ -1434,6 +1491,20 @@ speedBtn.addEventListener('click', () => {
   tone(300 + speedIdx * 90, 50, 0.04, 'square');
 });
 applySpeedUI();
+
+const autoBtn = document.getElementById('autoBtn');
+function applyAutoUI() {
+  autoBtn.classList.toggle('on', autoWave);
+  autoBtn.textContent = autoWave ? '🔁 掛機中' : '🔁 掛機';
+}
+autoBtn.addEventListener('click', () => {
+  initAudio();
+  autoWave = !autoWave;
+  if (autoWave && !waveActive) autoTimer = AUTO_GAP;   // 剛開啟就重新倒數,不會突然開打
+  applyAutoUI();
+  tone(autoWave ? 520 : 300, 60, 0.05, 'square');
+});
+applyAutoUI();
 
 let last = performance.now();
 function frame(now) {
