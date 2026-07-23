@@ -298,10 +298,10 @@ const ENEMIES = {
   armored: { name: '重甲', hp: 105, speed: 0.95, armor: 8,  bounty: 8,  size: 0.35, color: '#9aa7c4' },
   /* 疾行者:極快、極脆——懲罰有空隙的防線,逼你顧到整條路,冰系塔對牠特別有用 */
   runner:  { name: '疾行者', hp: 18, speed: 3.05, armor: 0, bounty: 3, size: 0.19, color: '#a0ffea' },
-  /* 醫療兵:回復射程內友軍的血(自己不回,才殺得掉)。放著不管會讓整團變得很肉,
-     是一種「軟性 DPS 檢查」——逼你有能力在敵群裡優先融掉它。healDps 隨波數一起長。 */
+  /* 醫療兵:每隔 healCd 秒脈衝回復射程內友軍的血(自己不回,才殺得掉)。放著不管會讓整團變得很肉,
+     是一種「軟性 DPS 檢查」——逼你有能力在敵群裡優先融掉它。healDps 隨波數一起長,但脈衝之間有空窗可集火。 */
   healer:  { name: '醫療兵', hp: 66, speed: 1.2, armor: 2, bounty: 12, size: 0.30, color: '#ff7ec8',
-             healDps: 15, healRadius: 2.1 },
+             healDps: 15, healRadius: 2.1, healCd: 2.5 },   // 每 healCd 秒脈衝回血一次(非持續),留出擊殺空窗
   /* 絕緣體:免疫一切控制(減速/凍結不生效),只能硬砍。冰系塔對牠完全無效,
      逼你留一手純輸出。灼燒屬於傷害不算控制,仍會生效。 */
   immune:  { name: '絕緣體', hp: 96, speed: 1.55, armor: 4, bounty: 13, size: 0.32, color: '#f2e79a',
@@ -749,6 +749,20 @@ function upgradeTower(t) {
   tone(480, 130, 0.07, 'triangle', 780);
   refreshUI();
 }
+/* 從目前等級到滿級還剩的所有升級:ups=各級資料、cost=總花費、toLvl=升滿後的等級索引 */
+function remainingUpgrades(t) {
+  const ups = TOWERS[t.kind].up.slice(t.lvl);
+  return { ups, cost: ups.reduce((s, u) => s + u.cost, 0), toLvl: TOWERS[t.kind].up.length };
+}
+/* 一鍵升滿:錢夠就把剩下的每一級一次升完,省得後期狂點升級鍵 */
+function upgradeTowerMax(t) {
+  const r = remainingUpgrades(t);
+  if (!r.ups.length || gold < r.cost) return;
+  gold -= r.cost;
+  for (let i = 0; i < r.ups.length; i++) applyUpgrade(t);
+  tone(560, 160, 0.08, 'triangle', 880);
+  refreshUI();
+}
 function doEvolve(t, branch) {
   const ev = (TOWERS[t.kind].evolve || [])[branch];
   if (!ev || gold < ev.cost) return;
@@ -806,8 +820,9 @@ function spawnEnemy(type) {
     speed: p.speed * spMul, armor, size: p.size, color: p.color,
     bounty: Math.round(p.bounty * Math.pow(WAVE.bountyGrowth, wave - 1)),
     immune: !!p.immune,                                   // 免疫減速/凍結
-    healDps: p.healDps ? Math.round(p.healDps * hpMul) : 0,  // 治療量跟著血量一起長
+    healDps: p.healDps ? Math.round(p.healDps * hpMul) : 0,  // 每次脈衝的回血量(跟著血量一起長)
     healRadius: p.healRadius || 0,
+    healCd: p.healCd || 0, healTimer: p.healCd || 0, healFlash: 0,  // 回血冷卻:出生先等一個 CD 才第一次脈衝
     d: 0, slowT: 0, slowPct: 0, hitFlash: 0, burnT: 0, burnDps: 0
   });
 }
@@ -838,15 +853,21 @@ function update(dt) {
     }
   }
 
-  // 醫療兵:回復射程內友軍的血(自己不回,才能被集火融掉)
+  // 醫療兵:每隔 healCd 秒「脈衝」一次,回復射程內受傷友軍(自己不回,才能被集火融掉)。
+  // 脈衝之間有空窗——趁冷卻時集火就能把補血對象打死,不會再出現「永遠殺不死」。
   for (const h of enemies) {
     if (!h.healDps) continue;
+    if (h.healFlash > 0) h.healFlash -= dt;
+    h.healTimer -= dt;
+    if (h.healTimer > 0) continue;
+    h.healTimer += h.healCd;          // 進入下一輪冷卻
+    h.healFlash = 0.25;               // 視覺:脈衝時光環亮一下
     const hp0 = posAt(h.d);
     for (const e of enemies) {
       if (e === h || e.hp >= e.maxHp) continue;
       const pe = posAt(e.d);
       if (Math.hypot(pe.x - hp0.x, pe.y - hp0.y) <= h.healRadius) {
-        e.hp = Math.min(e.maxHp, e.hp + h.healDps * dt);
+        e.hp = Math.min(e.maxHp, e.hp + h.healDps);   // 一次補一個脈衝量(平均回血 = healDps/healCd,約為原本 40%)
       }
     }
   }
@@ -1191,8 +1212,10 @@ function draw() {
       ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(cx, cy, r * 0.72, 0, Math.PI * 2); ctx.stroke();
     }
-    if (e.healDps) {                   // 醫療兵:治療光環 + 白十字
-      ctx.strokeStyle = 'rgba(120,224,138,.30)'; ctx.lineWidth = 2;
+    if (e.healDps) {                   // 醫療兵:治療光環 + 白十字(脈衝當下光環變亮)
+      const pulsing = e.healFlash > 0;
+      ctx.strokeStyle = pulsing ? 'rgba(120,224,138,.85)' : 'rgba(120,224,138,.30)';
+      ctx.lineWidth = pulsing ? 3 : 2;
       ctx.beginPath(); ctx.arc(cx, cy, S(e.healRadius), 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(cx - r * 0.13, cy - r * 0.5, r * 0.26, r);
@@ -1260,6 +1283,25 @@ function renderConfirm() {
     cmp('破甲', t.pierce, u.pierce);
     cmp('灼燒', t.burnDps, u.burnDps);
     detail = p.join(' · ');
+  } else if (c.kind === 'upgradeMax') {
+    const t = c.tower, d = TOWERS[t.kind], rem = remainingUpgrades(t);
+    color = d.color; cost = rem.cost; okLabel = '確認升滿';
+    title = d.name + ' Lv.' + (t.lvl + 1) + ' → Lv.' + (rem.toLvl + 1) + '(一次升 ' + rem.ups.length + ' 級)';
+    const nv = {};                                   // 疊加剩餘各級的最終數值
+    for (const up of rem.ups) for (const k in up) if (k !== 'cost') nv[k] = up[k];
+    const p = [];
+    const cmp = (label, now, next, fmt) => {
+      if (next == null || next === now) return;
+      p.push(label + ' ' + (fmt ? fmt(now) : now) + '→' + (fmt ? fmt(next) : next));
+    };
+    cmp('傷害', t.dmg, nv.dmg);
+    cmp('射速', t.fireRate, nv.fireRate, v => v.toFixed(1));
+    cmp('射程', t.range, nv.range, v => v.toFixed(1));
+    cmp('濺射', t.splash, nv.splash);
+    cmp('減速', t.slowPct, nv.slowPct, v => Math.round(v * 100) + '%');
+    cmp('破甲', t.pierce, nv.pierce);
+    cmp('灼燒', t.burnDps, nv.burnDps);
+    detail = p.join(' · ');
   } else if (c.kind === 'evolve') {
     const t = c.tower, ev = TOWERS[t.kind].evolve[c.branch], d = TOWERS[ev.key];
     color = d.color; cost = ev.cost; okLabel = '確認進化';
@@ -1306,6 +1348,8 @@ function commitConfirm() {
     refreshUI();
   } else if (c.kind === 'upgrade') {
     upgradeTower(c.tower);
+  } else if (c.kind === 'upgradeMax') {
+    upgradeTowerMax(c.tower);
   } else if (c.kind === 'evolve') {
     doEvolve(c.tower, c.branch);
   } else if (c.kind === 'overcharge') {
@@ -1342,7 +1386,13 @@ function renderPanel() {
   // 升級用完之後的動作:基礎塔→進化(兩顆分支鈕)、進階塔→無盡強化(可重複買)
   let actions;
   if (u) {
-    actions = '<button class="act" id="upBtn"' + (gold < u.cost ? ' disabled' : '') + '>升級 🪙' + u.cost + '</button>';
+    const rem = remainingUpgrades(t);
+    if (rem.ups.length >= 2 && gold >= rem.cost) {
+      // 錢夠一次升到滿 → 換成「一鍵升滿」,不用一級一級點
+      actions = '<button class="act" id="upMaxBtn">⏫升到 Lv.' + (rem.toLvl + 1) + ' 🪙' + rem.cost + '</button>';
+    } else {
+      actions = '<button class="act" id="upBtn"' + (gold < u.cost ? ' disabled' : '') + '>升級 🪙' + u.cost + '</button>';
+    }
   } else if (d.evolve) {
     actions = d.evolve.map((e, i) => {
       const ad = TOWERS[e.key];
@@ -1368,6 +1418,8 @@ function renderPanel() {
     '</div>';
   const ub = document.getElementById('upBtn');
   if (ub) ub.addEventListener('click', () => { confirmAct = { kind: 'upgrade', tower: t }; renderPanel(); });
+  const umb = document.getElementById('upMaxBtn');
+  if (umb) umb.addEventListener('click', () => { confirmAct = { kind: 'upgradeMax', tower: t }; renderPanel(); });
   const ocb = document.getElementById('ocBtn');
   if (ocb) ocb.addEventListener('click', () => { confirmAct = { kind: 'overcharge', tower: t }; renderPanel(); });
   for (const eb of panelEl.querySelectorAll('[data-evo]')) {
