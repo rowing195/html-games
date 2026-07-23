@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>祕法王國 Arcane Realm</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg:#0b1020; --card:#141b33; --card-hover:#1b2444;
+    --ink:#e8e6df; --ink-dim:#9aa3bf; --gold:#d4b26a; --line:#2a3457;
+    --good:#7ec87e; --bad:#e07a7a;
+  }
+  body {
+    min-height:100vh; background:radial-gradient(ellipse at 50% -20%, #1a2547 0%, var(--bg) 60%);
+    color:var(--ink); font-family:"Noto Serif TC","PMingLiU",Georgia,serif;
+    padding:10px 12px 30px; overflow-x:hidden;
+  }
+  a { color:var(--gold); text-decoration:none; }
+
+  /* ===== 頂部資源列 ===== */
+  #top {
+    display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px;
+    background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:8px 14px; margin-bottom:10px; position:sticky; top:6px; z-index:20;
+  }
+  #top .title { font-weight:600; letter-spacing:.15em; color:var(--gold); margin-right:6px; white-space:nowrap; }
+  .resItem { font-size:.92rem; white-space:nowrap; }
+  .resItem small { color:var(--ink-dim); font-size:.75rem; }
+  #taxBtn {
+    margin-left:auto; background:linear-gradient(180deg,#e8c87e,#c8a250); color:#2a2008;
+    border:none; border-radius:8px; padding:7px 16px; font-family:inherit; font-weight:700;
+    font-size:.95rem; cursor:pointer; letter-spacing:.05em; white-space:nowrap;
+  }
+  #taxBtn:active { transform:scale(.96); }
+  #homeLink { font-size:.8rem; color:var(--ink-dim); white-space:nowrap; }
+
+  /* ===== 主版面 ===== */
+  #wrap { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-start; }
+  #mapBox { flex:1 1 540px; min-width:300px; }
+  #map {
+    width:100%; display:block; border:1px solid var(--line); border-radius:10px;
+    background:#152218;
+  }
+  #panel {
+    flex:1 1 340px; min-width:300px; max-width:520px;
+    background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:10px 12px 12px;
+  }
+
+  /* ===== 分頁 ===== */
+  #tabs { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px; }
+  #tabs button {
+    flex:1; background:transparent; border:1px solid var(--line); color:var(--ink-dim);
+    border-radius:7px; padding:6px 4px; font-family:inherit; font-size:.85rem; cursor:pointer;
+    white-space:nowrap;
+  }
+  #tabs button.on { background:var(--card-hover); color:var(--gold); border-color:var(--gold); }
+  #tabBody { min-height:300px; }
+
+  .row {
+    display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:8px;
+    border:1px solid var(--line); margin-bottom:6px; background:rgba(0,0,0,.15);
+  }
+  .row .ic { font-size:1.3rem; width:30px; text-align:center; flex-shrink:0; }
+  .row .info { flex:1; min-width:0; }
+  .row .info b { font-size:.92rem; }
+  .row .info .sub { font-size:.76rem; color:var(--ink-dim); line-height:1.5; }
+  .row .lv { color:var(--gold); font-size:.8rem; margin-left:4px; }
+  .btn {
+    background:var(--card-hover); border:1px solid var(--gold); color:var(--gold);
+    border-radius:7px; padding:5px 10px; font-family:inherit; font-size:.8rem; cursor:pointer;
+    white-space:nowrap; flex-shrink:0;
+  }
+  .btn:hover { background:#243058; }
+  .btn:disabled { border-color:var(--line); color:#5a6483; cursor:default; background:transparent; }
+  .btn.small { padding:3px 9px; font-size:.85rem; }
+  .btn.danger { border-color:var(--bad); color:var(--bad); }
+  .hint { font-size:.78rem; color:var(--ink-dim); line-height:1.7; margin:4px 2px 8px; }
+  .sect { margin:12px 2px 6px; font-size:.85rem; color:var(--gold); letter-spacing:.15em; }
+  .costOk { color:var(--good); } .costNo { color:var(--bad); }
+  .warn { color:var(--bad); }
+
+  /* ===== 日誌 ===== */
+  #log {
+    margin-top:10px; border-top:1px solid var(--line); padding-top:8px;
+    font-size:.76rem; color:var(--ink-dim); line-height:1.8; max-height:110px; overflow-y:auto;
+  }
+  #log .new { color:var(--ink); }
+
+  /* ===== 遮罩層 ===== */
+  .ov {
+    position:fixed; inset:0; background:rgba(5,8,18,.82); z-index:50;
+    display:flex; align-items:center; justify-content:center; padding:16px;
+  }
+  .hidden { display:none !important; }
+  .box {
+    background:var(--card); border:1px solid var(--gold); border-radius:12px;
+    padding:20px 22px; max-width:560px; width:100%; max-height:90vh; overflow-y:auto;
+  }
+  .box h2 { color:var(--gold); font-size:1.15rem; letter-spacing:.1em; margin-bottom:10px; }
+  .box p { font-size:.88rem; line-height:1.8; margin-bottom:8px; }
+  .box textarea {
+    width:100%; height:90px; background:#0d1226; color:var(--ink); border:1px solid var(--line);
+    border-radius:8px; padding:8px; font-size:.75rem; font-family:monospace; resize:vertical;
+  }
+  .boxBtns { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+
+  /* ===== 戰鬥畫面 ===== */
+  #bField {
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    min-height:120px; position:relative; padding:10px 4px; overflow:hidden;
+  }
+  .bSide { flex:1; display:flex; flex-wrap:wrap; gap:6px; align-content:center; }
+  .bSide.right { justify-content:flex-end; }
+  .uchip {
+    background:rgba(0,0,0,.3); border:1px solid var(--line); border-radius:6px;
+    padding:2px 7px; font-size:.95rem; white-space:nowrap;
+  }
+  #bMid { font-size:1.6rem; animation:clash .7s ease-in-out infinite; flex-shrink:0; }
+  @keyframes clash { 0%,100%{transform:rotate(-12deg) scale(1);} 50%{transform:rotate(12deg) scale(1.25);} }
+  .dmgF {
+    position:absolute; font-weight:700; font-size:.95rem; pointer-events:none;
+    animation:floatUp 1s ease-out forwards;
+  }
+  @keyframes floatUp { 0%{opacity:1; transform:translateY(0);} 100%{opacity:0; transform:translateY(-42px);} }
+  .hpWrap { margin:6px 0; }
+  .hpWrap .lb { font-size:.78rem; color:var(--ink-dim); margin-bottom:3px; display:flex; justify-content:space-between; }
+  .hpBar { height:12px; background:#0d1226; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .hpBar i { display:block; height:100%; transition:width .5s; }
+  #pHpFill { background:linear-gradient(90deg,#5a9e5a,#7ec87e); }
+  #eHpFill { background:linear-gradient(90deg,#a05050,#e07a7a); }
+  #bResult { border-top:1px solid var(--line); margin-top:12px; padding-top:10px; }
+  #bResult .big { font-size:1.3rem; letter-spacing:.2em; margin-bottom:8px; }
+
+  ::-webkit-scrollbar { width:8px; } ::-webkit-scrollbar-thumb { background:var(--line); border-radius:4px; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <span class="title">⚜️ 祕法王國</span>
+  <span class="resItem" id="r_gold"></span>
+  <span class="resItem" id="r_food"></span>
+  <span class="resItem" id="r_wood"></span>
+  <span class="resItem" id="r_ore"></span>
+  <span class="resItem" id="r_mana"></span>
+  <span class="resItem" id="r_pop"></span>
+  <button id="taxBtn">👑 徵稅</button>
+  <a id="homeLink" href="index.html">← 遊戲庫</a>
+</div>
+
+<div id="wrap">
+  <div id="mapBox"><canvas id="map" width="960" height="520"></canvas></div>
+  <div id="panel">
+    <div id="tabs">
+      <button data-tab="build" class="on">🏗️ 建設</button>
+      <button data-tab="people">👥 領民</button>
+      <button data-tab="army">🛡️ 軍隊</button>
+      <button data-tab="war">⚔️ 出征</button>
+      <button data-tab="legacy">✨ 傳承</button>
+      <button data-tab="misc">⚙️</button>
+    </div>
+    <div id="tabBody"></div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<!-- 戰鬥 -->
+<div id="battleOv" class="ov hidden">
+  <div class="box">
+    <h2 id="bTitle"></h2>
+    <div class="hpWrap"><div class="lb"><span>我方軍隊</span><span id="pHpTxt"></span></div><div class="hpBar"><i id="pHpFill"></i></div></div>
+    <div id="bField">
+      <div class="bSide" id="bLeft"></div>
+      <div id="bMid">⚔️</div>
+      <div class="bSide right" id="bRight"></div>
+    </div>
+    <div class="hpWrap"><div class="lb"><span id="bEnemyName">敵方</span><span id="eHpTxt"></span></div><div class="hpBar"><i id="eHpFill"></i></div></div>
+    <div class="boxBtns"><button class="btn" id="bSkip">⏩ 跳過動畫</button></div>
+    <div id="bResult" class="hidden">
+      <div class="big" id="bResTitle"></div>
+      <div id="bResBody" style="font-size:.86rem; line-height:1.9;"></div>
+      <div class="boxBtns"><button class="btn" id="bClose">收下戰果</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- 離線收益 -->
+<div id="offlineOv" class="ov hidden">
+  <div class="box">
+    <h2>🌙 你不在的時候……</h2>
+    <div id="offBody" style="font-size:.9rem; line-height:2;"></div>
+    <div class="boxBtns"><button class="btn" id="offClose">收下</button></div>
+  </div>
+</div>
+
+<!-- 通用確認 -->
+<div id="confirmOv" class="ov hidden">
+  <div class="box">
+    <h2 id="cfTitle"></h2>
+    <p id="cfBody"></p>
+    <div class="boxBtns">
+      <button class="btn" id="cfYes">確認</button>
+      <button class="btn" id="cfNo">取消</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* =========================================================
+   祕法王國 —— 中世紀魔法風掛機建設遊戲
+   單檔、繁體中文、localStorage 存檔 + 跨裝置存檔碼
+   ========================================================= */
+const $ = s => document.querySelector(s);
+const now = () => Date.now();
+const rnd = (a,b) => a + Math.random()*(b-a);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+/* ---------- 數字格式:萬 / 億 / 兆 ---------- */
+function fmt(n){
+  n = Math.floor(n);
+  const t = (v,u) => { const s = (v).toFixed(v < 10 ? 2 : v < 100 ? 1 : 0); return s.replace(/\.0+$/,'') + u; };
+  if (n < 1e4)  return String(n);
+  if (n < 1e8)  return t(n/1e4, '萬');
+  if (n < 1e12) return t(n/1e8, '億');
+  return t(n/1e12, '兆');
+}
+function fmtRate(n){ return (n >= 0 ? '+' : '') + (n < 10 ? n.toFixed(1) : fmt(n)) + '/秒'; }
+function fmtTime(sec){
+  sec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60;
+  if (h) return h + '小時' + (m ? m + '分' : '');
+  if (m) return m + '分' + (s ? s + '秒' : '');
+  return s + '秒';
+}
+
+/* ========================= 定義 ========================= */
+const RES = {
+  gold:{icon:'💰', name:'金幣'}, food:{icon:'🌾', name:'食物'}, wood:{icon:'🪵', name:'木材'},
+  ore:{icon:'⛏️', name:'礦石'}, mana:{icon:'✨', name:'魔力'},
+};
+
+/* 建築:req = 需要的城堡等級 | job = 對應的領民工作 */
+const BUILD = {
+  castle:   { icon:'🏰', name:'城堡',   base:{gold:250, wood:100}, mul:2.1,  max:15, req:0,
+              eff: lv => '解鎖新建築與內容;人口上限 +' + (lv*2) },
+  house:    { icon:'🏠', name:'民房',   base:{gold:30, wood:15},   mul:1.35, max:80, req:1,
+              eff: lv => '人口上限 +' + (lv*5) },
+  farm:     { icon:'🌾', name:'農田',   base:{gold:25, wood:10},   mul:1.32, max:80, req:1, job:'farm',
+              eff: lv => '領民崗位 ' + lv*3 + ' 個,產食物' },
+  lumber:   { icon:'🪓', name:'伐木場', base:{gold:40},            mul:1.32, max:80, req:1, job:'lumber',
+              eff: lv => '領民崗位 ' + lv*3 + ' 個,產木材' },
+  mine:     { icon:'⛏️', name:'礦坑',   base:{gold:80, wood:40},   mul:1.35, max:80, req:2, job:'mine',
+              eff: lv => '領民崗位 ' + lv*3 + ' 個,產礦石' },
+  barracks: { icon:'🛡️', name:'兵營',   base:{gold:100, wood:60},  mul:1.5,  max:40, req:2,
+              eff: lv => '軍隊容量 ' + lv*10 + ' 名' },
+  magetower:{ icon:'🗼', name:'法師塔', base:{gold:200, wood:80, ore:30}, mul:1.45, max:60, req:3, job:'magetower',
+              eff: lv => '領民崗位 ' + lv*3 + ' 個,產魔力;解鎖法師' },
+  market:   { icon:'🏪', name:'市場',   base:{gold:150, wood:100}, mul:1.5,  max:50, req:3,
+              eff: lv => '商隊自動與和平鄰國貿易賺金幣' },
+  smithy:   { icon:'⚒️', name:'鐵匠鋪', base:{gold:120, ore:40},   mul:1.55, max:40, req:4,
+              eff: lv => '軍隊裝備:攻防 +' + (lv*12) + '%' },
+};
+const BUILD_ORDER = ['castle','house','farm','lumber','mine','barracks','magetower','market','smithy'];
+
+/* 領民工作:產量 = base × (1+0.15×(等級-1)) × 派駐人數 × 加成 */
+const JOBS = {
+  farm:      { res:'food', base:0.5 },
+  lumber:    { res:'wood', base:0.3 },
+  mine:      { res:'ore',  base:0.18 },
+  magetower: { res:'mana', base:0.1 },
+};
+
+const UNITS = {
+  sword:  { icon:'🗡️', name:'劍士',   atk:5,  hp:30, cost:{gold:15, food:10},          food:0.02,
+            need: () => S.b.barracks >= 1 ? null : '需要兵營' },
+  archer: { icon:'🏹', name:'弓箭手', atk:9,  hp:15, cost:{gold:30, food:10},          food:0.02,
+            need: () => S.b.barracks >= 1 ? null : '需要兵營' },
+  mage:   { icon:'🧙', name:'法師',   atk:22, hp:12, cost:{gold:70, mana:25},          food:0.02,
+            need: () => S.b.magetower >= 1 ? null : '需要法師塔' },
+  knight: { icon:'🐴', name:'騎士',   atk:16, hp:65, cost:{gold:160, food:40, ore:25}, food:0.06,
+            need: () => S.b.castle >= 5 ? null : '需要城堡 Lv5' },
+};
+const UNIT_ORDER = ['sword','archer','mage','knight'];
+
+/* 稀有寶物(首次討伐掉落,轉生後保留) */
+const ARTS = {
+  goldtooth:  { icon:'🦷', name:'哥布林金牙', desc:'徵稅收入 +30%' },
+  wolffang:   { icon:'🐺', name:'狼王之牙',   desc:'軍隊攻擊 +15%' },
+  banditmap:  { icon:'🗺️', name:'盜賊藏寶圖', desc:'貿易收益 +25%' },
+  wardrum:    { icon:'🥁', name:'獸人戰鼓',   desc:'軍隊攻防 +10%' },
+  crown:      { icon:'👑', name:'亡靈王冠',   desc:'魔力產量 +30%' },
+  lichbook:   { icon:'📕', name:'巫妖魔典',   desc:'法師攻擊 ×2' },
+  demonpact:  { icon:'📜', name:'惡魔契約',   desc:'全資源產量 +15%' },
+  dragonscale:{ icon:'🐲', name:'龍鱗鎧甲',   desc:'軍隊生命 +30%' },
+};
+
+/* 魔物巢穴(按順序解鎖) */
+const LAIRS = [
+  { id:'goblin', icon:'👺', name:'哥布林巢穴', power:60,    loot:{gold:80,   mana:8},              art:'goldtooth',   units:[['👺',5]] },
+  { id:'wolf',   icon:'🐺', name:'野狼群',     power:180,   loot:{gold:220,  food:120},            art:'wolffang',    units:[['🐺',7]] },
+  { id:'bandit', icon:'🥷', name:'盜賊營地',   power:450,   loot:{gold:650,  wood:220},            art:'banditmap',   units:[['🥷',6]] },
+  { id:'orc',    icon:'👹', name:'獸人戰營',   power:1100,  loot:{gold:1500, ore:220},             art:'wardrum',     units:[['👹',8]] },
+  { id:'undead', icon:'💀', name:'亡靈墓園',   power:2600,  loot:{gold:3200, mana:320},            art:'crown',       units:[['💀',8],['🧟',4]] },
+  { id:'lich',   icon:'🧙‍♂️', name:'巫妖高塔',   power:6000,  loot:{gold:7500, mana:950},            art:'lichbook',    units:[['💀',7],['🧙‍♂️',1]] },
+  { id:'demon',  icon:'😈', name:'惡魔裂隙',   power:14000, loot:{gold:17000, mana:2200},          art:'demonpact',   units:[['😈',10]] },
+  { id:'dragon', icon:'🐉', name:'巨龍之巢',   power:35000, loot:{gold:42000, ore:4500, mana:5000}, art:'dragonscale', units:[['🦎',6],['🐉',1]] },
+];
+
+/* 鄰國 NPC */
+const NBRS = [
+  { id:'moon',    icon:'🌙', name:'銀月王國', trade:1.0, power:900,  loot:{gold:900,  mana:130} },
+  { id:'hammer',  icon:'🔨', name:'鐵鎚公國', trade:1.4, power:2600, loot:{gold:2800, ore:380} },
+  { id:'emerald', icon:'🌿', name:'翡翠聯邦', trade:2.0, power:7000, loot:{gold:9500, wood:1600, mana:850} },
+];
+const WAR_COOLDOWN = 10*60*1000;   // 開戰後 10 分鐘停止貿易
+
+/* 傳承永久加成 */
+const LEGACY = {
+  prod:    { icon:'🌟', name:'富饒祝福', desc:'全資源產量 +25%/級', max:25, cost: l => Math.ceil(4*Math.pow(1.6, l)) },
+  tax:     { icon:'👑', name:'稅官傳承', desc:'徵稅收入 +50%/級',   max:25, cost: l => Math.ceil(3*Math.pow(1.55, l)) },
+  war:     { icon:'⚔️', name:'戰魂傳承', desc:'軍隊攻防 +20%/級',   max:25, cost: l => Math.ceil(4*Math.pow(1.6, l)) },
+  start:   { icon:'🎁', name:'王室金庫', desc:'每輪開局:金幣400/木材200/食物200 ×級', max:20, cost: l => Math.ceil(3*Math.pow(1.5, l)) },
+  offline: { icon:'⏳', name:'時之沙漏', desc:'離線收益上限 +2小時/級', max:8, cost: l => Math.ceil(5*Math.pow(2, l)) },
+};
+const PRESTIGE_CASTLE = 8;   // 城堡達此等級可傳承
+
+/* ========================= 狀態 ========================= */
+const SAVE_KEY = 'arcaneRealmSave1';
+const CODE_PREFIX = 'MK1|';
+
+function freshState(keep){
+  keep = keep || {};
+  const s = {
+    ver: 1,
+    res: { gold:50, food:30, wood:30, ore:0, mana:0 },
+    pop: 5,
+    b: { castle:1, house:0, farm:0, lumber:0, mine:0, barracks:0, magetower:0, market:0, smithy:0 },
+    w: { farm:0, lumber:0, mine:0, magetower:0 },
+    army: { sword:0, archer:0, mage:0, knight:0 },
+    lairKills: {}, lairMax: 0,
+    nbr: {},                       // id -> {raids, warUntil}
+    arts: keep.arts || [],
+    legacy: keep.legacy || 0,
+    legacyUp: keep.legacyUp || { prod:0, tax:0, war:0, start:0, offline:0 },
+    totalLegacy: keep.totalLegacy || 0,
+    reigns: keep.reigns || 1,
+    stats: { goldEarned:0 },
+    lastTick: now(), lastSeen: now(),
+  };
+  for (const n of NBRS) s.nbr[n.id] = { raids:0, warUntil:0 };
+  const st = s.legacyUp.start;
+  if (st > 0){ s.res.gold += 400*st; s.res.wood += 200*st; s.res.food += 200*st; }
+  return s;
+}
+let S = null;
+
+/* ========================= 存讀檔 ========================= */
+function save(){
+  S.lastSeen = now();
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch(e){}
+}
+function load(){
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s || s.ver !== 1) return null;
+    const base = freshState();                       // 補齊舊存檔缺的欄位
+    for (const k in base) if (s[k] === undefined) s[k] = base[k];
+    for (const n of NBRS) if (!s.nbr[n.id]) s.nbr[n.id] = { raids:0, warUntil:0 };
+    return s;
+  } catch(e){ return null; }
+}
+function exportCode(){
+  save();
+  return CODE_PREFIX + btoa(unescape(encodeURIComponent(JSON.stringify(S))));
+}
+function importCode(str){
+  str = (str || '').trim();
+  if (!str.startsWith(CODE_PREFIX)) return { ok:false, msg:'這不是「祕法王國」的存檔碼(開頭應為 ' + CODE_PREFIX.slice(0,3) + ')' };
+  try {
+    const s = JSON.parse(decodeURIComponent(escape(atob(str.slice(CODE_PREFIX.length)))));
+    if (!s || s.ver !== 1 || !s.res || !s.b) return { ok:false, msg:'存檔碼內容不完整' };
+    const base = freshState();
+    for (const k in base) if (s[k] === undefined) s[k] = base[k];
+    S = s; S.lastTick = now(); S.lastSeen = now();
+    save(); renderAll(true);
+    return { ok:true, msg:'匯入成功!歡迎回來,陛下' };
+  } catch(e){ return { ok:false, msg:'存檔碼格式錯誤,可能少複製了幾個字' }; }
+}
+
+/* ========================= 數值計算 ========================= */
+const hasArt = id => S.arts.indexOf(id) >= 0;
+function prodMult(){ return (1 + 0.25*S.legacyUp.prod) * (hasArt('demonpact') ? 1.15 : 1); }
+function taxMult(){ return (1 + 0.5*S.legacyUp.tax) * (hasArt('goldtooth') ? 1.3 : 1); }
+function atkMult(){
+  return (1 + 0.12*S.b.smithy) * (1 + 0.2*S.legacyUp.war)
+       * (hasArt('wolffang') ? 1.15 : 1) * (hasArt('wardrum') ? 1.1 : 1);
+}
+function hpMult(){
+  return (1 + 0.12*S.b.smithy) * (1 + 0.2*S.legacyUp.war)
+       * (hasArt('wardrum') ? 1.1 : 1) * (hasArt('dragonscale') ? 1.3 : 1);
+}
+function popCap(){ return 5 + S.b.house*5 + S.b.castle*2; }
+function armyCount(){ let n = 0; for (const u of UNIT_ORDER) n += S.army[u]; return n; }
+function armyCap(){ return S.b.barracks*10; }
+function armyFood(){ let f = 0; for (const u of UNIT_ORDER) f += S.army[u]*UNITS[u].food; return f; }
+function assigned(){ let n = 0; for (const j in S.w) n += S.w[j]; return n; }
+function idlePop(){ return Math.max(0, Math.floor(S.pop) - assigned()); }
+function jobSlots(j){ return S.b[j]*3; }
+function atPeace(id){ return now() > S.nbr[id].warUntil; }
+function taxValue(){ return Math.ceil(2*S.pop*taxMult()); }
+
+function buildCost(key){
+  const d = BUILD[key], lv = S.b[key], c = {};
+  for (const r in d.base) c[r] = Math.ceil(d.base[r]*Math.pow(d.mul, lv - (key==='castle'?1:0)));
+  return c;
+}
+function canAfford(cost){ for (const r in cost) if (S.res[r] < cost[r]) return false; return true; }
+function pay(cost){ for (const r in cost) S.res[r] -= cost[r]; }
+function costText(cost){
+  const parts = [];
+  for (const r in cost){
+    const ok = S.res[r] >= cost[r];
+    parts.push('<span class="' + (ok?'costOk':'costNo') + '">' + RES[r].icon + fmt(cost[r]) + '</span>');
+  }
+  return parts.join(' ');
+}
+
+/* 每秒產出速率 */
+function prodRates(state){
+  const s = state || S;
+  const pm = (1 + 0.25*s.legacyUp.prod) * (s.arts.indexOf('demonpact')>=0 ? 1.15 : 1);
+  const starving = s.res.food <= 0.5;
+  const pen = starving ? 0.5 : 1;
+  const r = { gold:0, food:0, wood:0, ore:0, mana:0, tradeGold:0, eat:0, starving };
+  for (const j in JOBS){
+    const lv = s.b[j]; if (lv < 1) continue;
+    let v = JOBS[j].base * (1 + 0.15*(lv-1)) * (s.w[j]||0) * pm * pen;
+    if (JOBS[j].res === 'mana' && s.arts.indexOf('crown')>=0) v *= 1.3;
+    r[JOBS[j].res] += v;
+  }
+  if (s.b.market >= 1){
+    let tg = 0;
+    for (const n of NBRS) if (now() > s.nbr[n.id].warUntil) tg += 0.6 * s.b.market * n.trade;
+    tg *= pm * (s.arts.indexOf('banditmap')>=0 ? 1.25 : 1) * pen;
+    r.gold += tg; r.tradeGold = tg;
+  }
+  let eat = s.pop*0.04;
+  for (const u of UNIT_ORDER) eat += s.army[u]*UNITS[u].food;
+  r.eat = eat;
+  return r;
+}
+
+/* 軍力(與巢穴威脅值同一尺度,數字相近≈勢均力敵) */
+function playerStats(){
+  let atk = 0, hp = 0, cnt = 0;
+  for (const u of UNIT_ORDER){
+    const n = S.army[u]; if (!n) continue;
+    let a = UNITS[u].atk;
+    if (u === 'mage' && hasArt('lichbook')) a *= 2;
+    atk += a*n; hp += UNITS[u].hp*n; cnt += n;
+  }
+  atk *= atkMult(); hp *= hpMult();
+  return { atk, hp, cnt, power: Math.round((atk + 0.3*hp) / 0.8) };
+}
+function enemyStats(power){ return { atk: power*0.35, hp: power*1.5 }; }
+
+/* ========================= 戰鬥模擬 ========================= */
+function simulate(p, e){
+  let pHp = p.hp, eHp = e.hp;
+  const rounds = [];
+  for (let i = 0; i < 10 && pHp > 0 && eHp > 0; i++){
+    const pd = p.atk * rnd(0.85, 1.15);           // 我方造成
+    const ed = e.atk * rnd(0.85, 1.15);           // 敵方造成
+    eHp = Math.max(0, eHp - pd);
+    pHp = Math.max(0, pHp - ed);
+    rounds.push({ pd, ed, pFrac: pHp/p.hp, eFrac: eHp/e.hp });
+  }
+  let win;
+  if (eHp <= 0 && pHp <= 0) win = (p.hp - 0) / p.hp >= 0;  // 同歸於盡算慘勝
+  if (eHp <= 0) win = true; else if (pHp <= 0) win = false;
+  else win = (pHp/p.hp) >= (eHp/e.hp);
+  const hpLost = 1 - pHp/p.hp;
+  const lossFrac = clamp(hpLost * (win ? 0.5 : 0.85), 0, 1);
+  const casualties = {};
+  for (const u of UNIT_ORDER){
+    const n = S.army[u]; if (!n) continue;
+    const lose = Math.min(n, Math.round(n * lossFrac * rnd(0.8, 1.2)));
+    if (lose > 0) casualties[u] = lose;
+  }
+  return { win, rounds, casualties };
+}
+
+/* 出征入口:kind = lair / nbr */
+function startBattle(kind, id){
+  const p = playerStats();
+  if (p.cnt === 0){ log('⚠️ 沒有軍隊!先到「軍隊」分頁招兵'); return; }
+  let title, enemyName, enemyUnits, e, loot, afterWin, afterAny;
+
+  if (kind === 'lair'){
+    const L = LAIRS.find(x => x.id === id);
+    const kills = S.lairKills[id] || 0;
+    const power = L.power * (1 + 0.12*kills);
+    e = enemyStats(power);
+    title = '討伐:' + L.name;
+    enemyName = L.icon + ' ' + L.name;
+    enemyUnits = L.units;
+    loot = {};
+    for (const r in L.loot) loot[r] = Math.ceil(L.loot[r] * (1 + 0.08*kills));
+    afterWin = (res) => {
+      S.lairKills[id] = kills + 1;
+      const idx = LAIRS.indexOf(L);
+      if (idx === S.lairMax) S.lairMax++;
+      if (L.art && !hasArt(L.art)){ S.arts.push(L.art); res.art = L.art; }
+    };
+  } else {
+    const N = NBRS.find(x => x.id === id);
+    const st = S.nbr[id];
+    const power = N.power * Math.pow(1.25, st.raids);
+    e = enemyStats(power);
+    title = '劫掠:' + N.name;
+    enemyName = N.icon + ' ' + N.name + '軍';
+    enemyUnits = [['🛡️', 6], ['⚔️', 4]];
+    loot = {};
+    for (const r in N.loot) loot[r] = Math.ceil(N.loot[r] * Math.pow(1.1, st.raids));
+    afterAny = () => { st.warUntil = now() + WAR_COOLDOWN; };   // 打了就是開戰,貿易中斷
+    afterWin = () => { st.raids++; };
+  }
+
+  const sim = simulate(p, e);
+  /* 結果立即入帳,動畫只是呈現 */
+  for (const u in sim.casualties) S.army[u] -= sim.casualties[u];
+  const result = { loot:{}, art:null };
+  if (sim.win){
+    for (const r in loot){ S.res[r] += loot[r]; result.loot[r] = loot[r]; if (r==='gold') S.stats.goldEarned += loot[r]; }
+    if (afterWin) afterWin(result);
+  }
+  if (afterAny) afterAny();
+  log((sim.win ? '🎉 ' : '💔 ') + title + (sim.win ? ' 勝利!' : ' 敗北……'));
+  save();
+  playBattle({ title, enemyName, enemyUnits, sim, result });
+}
+
+/* ---- 戰鬥動畫播放 ---- */
+let bTimer = null;
+function playBattle(cfg){
+  const { sim } = cfg;
+  $('#bTitle').textContent = '⚔️ ' + cfg.title;
+  $('#bEnemyName').textContent = cfg.enemyName;
+  const left = $('#bLeft'), right = $('#bRight');
+  left.innerHTML = ''; right.innerHTML = '';
+  for (const u of UNIT_ORDER){
+    const n = S.army[u] + (sim.casualties[u]||0);   // 顯示出征前兵力
+    if (n > 0) left.innerHTML += '<span class="uchip">' + UNITS[u].icon + '×' + n + '</span>';
+  }
+  for (const [ic, n] of cfg.enemyUnits) right.innerHTML += '<span class="uchip">' + ic + '×' + n + '</span>';
+  $('#pHpFill').style.width = '100%'; $('#eHpFill').style.width = '100%';
+  $('#pHpTxt').textContent = '100%'; $('#eHpTxt').textContent = '100%';
+  $('#bResult').classList.add('hidden');
+  $('#bSkip').classList.remove('hidden');
+  $('#battleOv').classList.remove('hidden');
+
+  let i = 0;
+  const step = () => {
+    if (i >= sim.rounds.length){ finishBattle(cfg); return; }
+    const r = sim.rounds[i++];
+    $('#pHpFill').style.width = (r.pFrac*100) + '%';
+    $('#eHpFill').style.width = (r.eFrac*100) + '%';
+    $('#pHpTxt').textContent = Math.round(r.pFrac*100) + '%';
+    $('#eHpTxt').textContent = Math.round(r.eFrac*100) + '%';
+    dmgFloat(true,  r.ed);
+    dmgFloat(false, r.pd);
+    bTimer = setTimeout(step, 750);
+  };
+  bTimer = setTimeout(step, 500);
+}
+function dmgFloat(onPlayer, val){
+  const f = document.createElement('span');
+  f.className = 'dmgF';
+  f.style.color = onPlayer ? '#e07a7a' : '#f0d080';
+  f.textContent = '-' + fmt(Math.round(val));
+  f.style.left = (onPlayer ? rnd(12, 32) : rnd(60, 82)) + '%';
+  f.style.top = rnd(20, 60) + '%';
+  $('#bField').appendChild(f);
+  setTimeout(() => f.remove(), 1000);
+}
+function finishBattle(cfg){
+  clearTimeout(bTimer);
+  const { sim, result } = cfg;
+  const last = sim.rounds[sim.rounds.length-1];
+  if (last){
+    $('#pHpFill').style.width = (last.pFrac*100) + '%';
+    $('#eHpFill').style.width = (last.eFrac*100) + '%';
+  }
+  $('#bSkip').classList.add('hidden');
+  $('#bResTitle').textContent = sim.win ? '🎉 勝利!' : '💔 敗北……';
+  $('#bResTitle').style.color = sim.win ? 'var(--gold)' : 'var(--bad)';
+  let html = '';
+  const cas = Object.keys(sim.casualties);
+  if (cas.length){
+    html += '陣亡:' + cas.map(u => UNITS[u].icon + UNITS[u].name + '×' + sim.casualties[u]).join('、') + '<br>';
+  } else html += '全員平安歸來!<br>';
+  if (sim.win){
+    const ls = Object.keys(result.loot).map(r => RES[r].icon + fmt(result.loot[r]));
+    if (ls.length) html += '戰利品:' + ls.join(' ') + '<br>';
+    if (result.art){
+      const a = ARTS[result.art];
+      html += '<span style="color:var(--gold)">✨ 獲得寶物「' + a.icon + a.name + '」—— ' + a.desc + '(永久保留)</span><br>';
+    }
+  } else {
+    html += '敵人太強了,回去多招點兵、升級鐵匠鋪吧。';
+  }
+  $('#bResBody').innerHTML = html;
+  $('#bResult').classList.remove('hidden');
+}
+$('#bSkip').onclick = () => { const c = curBattle; if (c) finishBattle(c); };
+$('#bClose').onclick = () => { $('#battleOv').classList.add('hidden'); renderAll(); };
+let curBattle = null;
+const _playBattle = playBattle;
+playBattle = cfg => { curBattle = cfg; _playBattle(cfg); };
+
+/* ========================= 轉生 ========================= */
+function legacyGain(){
+  if (S.b.castle < PRESTIGE_CASTLE) return 0;
+  return Math.floor(Math.pow(S.stats.goldEarned/4000, 0.65)) + S.b.castle + S.lairMax*2;
+}
+function doPrestige(){
+  const gain = legacyGain();
+  const keep = {
+    arts: S.arts, legacyUp: S.legacyUp,
+    legacy: S.legacy + gain, totalLegacy: S.totalLegacy + gain,
+    reigns: S.reigns + 1,
+  };
+  S = freshState(keep);
+  log('👑 第 ' + S.reigns + ' 代國王登基!獲得 ✨遺產 ' + gain + ' 點');
+  save(); renderAll(true);
+}
+
+/* ========================= 主迴圈 ========================= */
+let R = { gold:0, food:0, wood:0, ore:0, mana:0, tradeGold:0, eat:0, starving:false };
+function tick(){
+  const t = now();
+  let dt = (t - S.lastTick) / 1000;
+  S.lastTick = t;
+  if (dt <= 0) return;
+  dt = Math.min(dt, 600);              // 分頁休眠也照算,超過 10 分鐘的交給離線結算
+  R = prodRates();
+  S.res.food = Math.max(0, S.res.food + (R.food - R.eat)*dt);
+  S.res.wood += R.wood*dt;
+  S.res.ore  += R.ore*dt;
+  S.res.mana += R.mana*dt;
+  S.res.gold += R.gold*dt;
+  S.stats.goldEarned += R.gold*dt;
+  if (S.res.food > 1 && S.pop < popCap()){
+    S.pop = Math.min(popCap(), S.pop + dt*(0.08 + S.pop*0.002));
+  }
+  /* 人口若因招兵減少,砍掉超額的派工 */
+  let over = assigned() - Math.floor(S.pop);
+  if (over > 0){
+    for (const j of ['magetower','mine','lumber','farm']){
+      while (over > 0 && S.w[j] > 0){ S.w[j]--; over--; }
+    }
+  }
+}
+
+/* ========================= 離線結算 ========================= */
+function offlineSettle(){
+  const dt = (now() - S.lastSeen) / 1000;
+  if (dt < 120) return;
+  const cap = (8 + 2*S.legacyUp.offline) * 3600;
+  const eff = Math.min(dt, cap) * 0.5;             // 離線半速
+  const r = prodRates(S);
+  const gains = {};
+  const fNet = Math.max(0, r.food - r.eat);
+  if (fNet > 0) gains.food = fNet*eff;
+  if (r.wood > 0) gains.wood = r.wood*eff;
+  if (r.ore  > 0) gains.ore  = r.ore*eff;
+  if (r.mana > 0) gains.mana = r.mana*eff;
+  if (r.gold > 0) gains.gold = r.gold*eff;
+  let any = false, html = '你離開了 <b>' + fmtTime(dt) + '</b>' +
+    (dt > cap ? '(超過離線上限 ' + fmtTime(cap) + ',可用⏳時之沙漏延長)' : '') + ',領民們帶回:<br>';
+  for (const k in gains){
+    if (gains[k] < 1) continue;
+    any = true;
+    S.res[k] += gains[k];
+    if (k === 'gold') S.stats.goldEarned += gains.gold;
+    html += RES[k].icon + ' ' + RES[k].name + ' +' + fmt(gains[k]) + '<br>';
+  }
+  const oldPop = S.pop;
+  S.pop = Math.min(popCap(), S.pop + Math.min(eff, 7200)*0.05);
+  if (Math.floor(S.pop) > Math.floor(oldPop)){
+    any = true;
+    html += '👥 新領民 +' + (Math.floor(S.pop) - Math.floor(oldPop)) + ' 人<br>';
+  }
+  if (any){
+    $('#offBody').innerHTML = html;
+    $('#offlineOv').classList.remove('hidden');
+  }
+  S.lastTick = now();
+}
+$('#offClose').onclick = () => $('#offlineOv').classList.add('hidden');
+
+/* ========================= 日誌 ========================= */
+const logs = [];
+function log(msg){
+  logs.unshift({ msg, t: new Date() });
+  if (logs.length > 30) logs.pop();
+  const el = $('#log');
+  el.innerHTML = logs.slice(0, 8).map((l, i) =>
+    '<div class="' + (i===0?'new':'') + '">' +
+    l.t.toTimeString().slice(0,5) + ' ' + l.msg + '</div>').join('');
+}
+
+/* ========================= UI:分頁 ========================= */
+let curTab = 'build';
+document.querySelectorAll('#tabs button').forEach(b => {
+  b.onclick = () => {
+    curTab = b.dataset.tab;
+    document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
+    renderTab();
+  };
+});
+
+function renderTab(){
+  const el = $('#tabBody');
+  if (curTab === 'build')  el.innerHTML = viewBuild();
+  if (curTab === 'people') el.innerHTML = viewPeople();
+  if (curTab === 'army')   el.innerHTML = viewArmy();
+  if (curTab === 'war')    el.innerHTML = viewWar();
+  if (curTab === 'legacy') el.innerHTML = viewLegacy();
+  if (curTab === 'misc')   el.innerHTML = viewMisc();
+}
+
+function viewBuild(){
+  let h = '<div class="hint">點「👑 徵稅」賺第一桶金,蓋農田+民房發展人口,城堡升級解鎖更多建築。</div>';
+  for (const key of BUILD_ORDER){
+    const d = BUILD[key], lv = S.b[key];
+    const locked = S.b.castle < d.req;
+    const maxed = lv >= d.max;
+    const cost = buildCost(key);
+    h += '<div class="row"><span class="ic">' + d.icon + '</span><div class="info"><b>' + d.name +
+      (lv > 0 ? '<span class="lv">Lv.' + lv + '</span>' : '') + '</b>' +
+      '<div class="sub">' + (locked ? '🔒 需要城堡 Lv.' + d.req : d.eff(Math.max(lv,1)) +
+        (maxed ? '' : '<br>' + (lv===0?'建造':'升級') + ':' + costText(cost))) + '</div></div>';
+    if (!locked && !maxed){
+      h += '<button class="btn" data-act="build:' + key + '"' + (canAfford(cost)?'':' disabled') + '>' +
+        (lv === 0 ? '建造' : '升級') + '</button>';
+    } else if (maxed) h += '<span class="lv">MAX</span>';
+    h += '</div>';
+  }
+  return h;
+}
+
+function viewPeople(){
+  const starving = R.starving;
+  let h = '<div class="hint">👥 人口 <b>' + Math.floor(S.pop) + ' / ' + popCap() + '</b>' +
+    (S.pop < popCap() ? '(有食物就會慢慢成長,蓋🏠民房提高上限)' : '(已滿,蓋🏠民房提高上限)') +
+    '<br>閒置領民 <b>' + idlePop() + '</b> 人|食物 ' +
+    (starving ? '<span class="warn">⚠️ 短缺!全產量減半</span>' : fmtRate(R.food - R.eat) + '(吃掉 ' + R.eat.toFixed(1) + '/秒)') +
+    '</div>';
+  const jobName = { farm:'農田', lumber:'伐木場', mine:'礦坑', magetower:'法師塔' };
+  for (const j in JOBS){
+    const d = BUILD[j], built = S.b[j] >= 1;
+    const slots = jobSlots(j), wn = S.w[j];
+    const rate = R[JOBS[j].res] || 0;
+    h += '<div class="row"><span class="ic">' + d.icon + '</span><div class="info"><b>' + jobName[j] + '</b>' +
+      '<div class="sub">' + (built ?
+        '派駐 ' + wn + ' / ' + slots + ' 人 → ' + RES[JOBS[j].res].icon + ' ' + fmtRate(j==='farm' ? rate : rate) :
+        '尚未建造') + '</div></div>';
+    if (built){
+      h += '<button class="btn small" data-act="work:' + j + ':-1"' + (wn>0?'':' disabled') + '>−</button>' +
+           '<button class="btn small" data-act="work:' + j + ':1"' + (wn<slots && idlePop()>0 ? '' : ' disabled') + '>+</button>' +
+           '<button class="btn small" data-act="work:' + j + ':max"' + (wn<slots && idlePop()>0 ? '' : ' disabled') + '>滿</button>';
+    }
+    h += '</div>';
+  }
+  return h;
+}
+
+function viewArmy(){
+  const p = playerStats();
+  let h = '<div class="hint">🛡️ 軍隊 <b>' + armyCount() + ' / ' + armyCap() + '</b>|戰力 <b style="color:var(--gold)">' + fmt(p.power) + '</b>' +
+    '<br>⚒️ 裝備等級 Lv.' + S.b.smithy + '(攻防 +' + (S.b.smithy*12) + '%)|招兵會徵召 1 名閒置領民' + '</div>';
+  if (S.b.barracks < 1) h += '<div class="hint warn">先到「建設」蓋 🛡️ 兵營才能招兵(需城堡 Lv.2)。</div>';
+  for (const u of UNIT_ORDER){
+    const d = UNITS[u], lock = d.need();
+    let a = d.atk; if (u==='mage' && hasArt('lichbook')) a *= 2;
+    h += '<div class="row"><span class="ic">' + d.icon + '</span><div class="info"><b>' + d.name +
+      '<span class="lv">×' + S.army[u] + '</span></b>' +
+      '<div class="sub">攻 ' + a + '/血 ' + d.hp + (lock ? '|🔒 ' + lock : '|' + costText(d.cost)) + '</div></div>';
+    if (!lock){
+      const can = canAfford(d.cost) && armyCount() < armyCap() && idlePop() >= 1;
+      h += '<button class="btn" data-act="recruit:' + u + ':1"' + (can?'':' disabled') + '>招募</button>' +
+           '<button class="btn small" data-act="recruit:' + u + ':5"' + (can?'':' disabled') + '>×5</button>';
+    }
+    h += '</div>';
+  }
+  if (S.arts.length){
+    h += '<div class="sect">✨ 寶物(永久)</div>';
+    for (const id of S.arts){
+      const a = ARTS[id];
+      h += '<div class="row"><span class="ic">' + a.icon + '</span><div class="info"><b>' + a.name + '</b><div class="sub">' + a.desc + '</div></div></div>';
+    }
+  }
+  return h;
+}
+
+function viewWar(){
+  const p = playerStats();
+  let h = '<div class="hint">我方戰力 <b style="color:var(--gold)">' + fmt(p.power) + '</b>。討伐魔物拿戰利品,首殺掉落永久寶物;劫掠鄰國收益高,但會中斷貿易 10 分鐘。</div>';
+  h += '<div class="sect">🗡️ 魔物巢穴</div>';
+  LAIRS.forEach((L, i) => {
+    if (i > S.lairMax){
+      if (i === S.lairMax + 1) h += '<div class="row"><span class="ic">❓</span><div class="info"><b>???</b><div class="sub">先攻克上一個巢穴</div></div></div>';
+      return;
+    }
+    const kills = S.lairKills[L.id] || 0;
+    const power = Math.round(L.power * (1 + 0.12*kills));
+    const lootTxt = Object.keys(L.loot).map(r => RES[r].icon + fmt(Math.ceil(L.loot[r]*(1+0.08*kills)))).join(' ');
+    const artTxt = (L.art && !hasArt(L.art)) ? '|首殺:' + ARTS[L.art].icon + ARTS[L.art].name : '';
+    h += '<div class="row"><span class="ic">' + L.icon + '</span><div class="info"><b>' + L.name +
+      (kills ? '<span class="lv">已破×' + kills + '</span>' : '') + '</b>' +
+      '<div class="sub">威脅 <b style="color:' + (p.power >= power ? 'var(--good)' : 'var(--bad)') + '">' + fmt(power) + '</b>|' +
+      lootTxt + artTxt + '</div></div>' +
+      '<button class="btn" data-act="lair:' + L.id + '"' + (p.cnt ? '' : ' disabled') + '>討伐</button></div>';
+  });
+  h += '<div class="sect">🏳️ 鄰國</div>';
+  if (S.b.market < 1) h += '<div class="hint">蓋 🏪 市場後,和平的鄰國會自動與你貿易(金幣入帳)。</div>';
+  for (const N of NBRS){
+    const st = S.nbr[N.id];
+    const peace = atPeace(N.id);
+    const power = Math.round(N.power * Math.pow(1.25, st.raids));
+    const tradeRate = S.b.market >= 1 && peace ? 0.6*S.b.market*N.trade*prodMult()*(hasArt('banditmap')?1.25:1) : 0;
+    h += '<div class="row"><span class="ic">' + N.icon + '</span><div class="info"><b>' + N.name +
+      (st.raids ? '<span class="lv">劫掠×' + st.raids + '</span>' : '') + '</b>' +
+      '<div class="sub">' + (peace ?
+        '🕊️ 和平|貿易 ' + (tradeRate > 0 ? '💰' + fmtRate(tradeRate) : '(需要市場)') :
+        '<span class="warn">⚔️ 交戰中,貿易中斷 ' + fmtTime((st.warUntil - now())/1000) + '</span>') +
+      '|軍力 <b style="color:' + (p.power >= power ? 'var(--good)' : 'var(--bad)') + '">' + fmt(power) + '</b>' +
+      '|戰利品 ' + Object.keys(N.loot).map(r => RES[r].icon + fmt(Math.ceil(N.loot[r]*Math.pow(1.1, st.raids)))).join(' ') +
+      '</div></div>' +
+      '<button class="btn danger" data-act="nbr:' + N.id + '"' + (p.cnt && peace ? '' : ' disabled') + '>劫掠</button></div>';
+  }
+  return h;
+}
+
+function viewLegacy(){
+  const gain = legacyGain();
+  const can = S.b.castle >= PRESTIGE_CASTLE;
+  let h = '<div class="hint">第 <b>' + S.reigns + '</b> 代王朝|✨ 未用遺產 <b style="color:var(--gold)">' + S.legacy + '</b> 點' +
+    '<br>城堡升到 Lv.' + PRESTIGE_CASTLE + ' 後可「讓位傳承」:重置一切(寶物與遺產保留),換取遺產點數,下一輪更快更強。</div>';
+  h += '<div class="row"><span class="ic">👑</span><div class="info"><b>讓位傳承</b><div class="sub">' +
+    (can ? '現在傳承可得 ✨<b style="color:var(--gold)">' + gain + '</b> 點遺產' :
+      '🔒 城堡 Lv.' + S.b.castle + ' / ' + PRESTIGE_CASTLE) + '</div></div>' +
+    '<button class="btn danger" data-act="prestige"' + (can && gain > 0 ? '' : ' disabled') + '>傳承</button></div>';
+  h += '<div class="sect">✨ 永久加成(花費遺產)</div>';
+  for (const k in LEGACY){
+    const d = LEGACY[k], lv = S.legacyUp[k];
+    const maxed = lv >= d.max;
+    const cost = d.cost(lv);
+    h += '<div class="row"><span class="ic">' + d.icon + '</span><div class="info"><b>' + d.name +
+      '<span class="lv">Lv.' + lv + '</span></b><div class="sub">' + d.desc +
+      (maxed ? '' : '|下一級:✨' + cost) + '</div></div>';
+    h += maxed ? '<span class="lv">MAX</span>' :
+      '<button class="btn" data-act="legacy:' + k + '"' + (S.legacy >= cost ? '' : ' disabled') + '>升級</button>';
+    h += '</div>';
+  }
+  return h;
+}
+
+function viewMisc(){
+  let h = '<div class="sect">💾 存檔</div>' +
+    '<div class="hint">遊戲每 30 秒自動存檔在這台裝置。要換裝置玩,複製存檔碼過去貼上即可。</div>' +
+    '<div class="boxBtns"><button class="btn" data-act="showExport">📤 匯出存檔碼</button>' +
+    '<button class="btn" data-act="showImport">📥 匯入存檔碼</button></div>' +
+    '<div id="codeArea"></div>' +
+    '<div class="sect">📊 本輪紀錄</div>' +
+    '<div class="hint">累計金幣收入:💰' + fmt(S.stats.goldEarned) + '<br>王朝:第 ' + S.reigns + ' 代|歷代累計遺產:✨' + S.totalLegacy + '</div>' +
+    '<div class="sect">⚠️ 危險區</div>' +
+    '<div class="boxBtns"><button class="btn danger" data-act="wipe">🗑️ 刪除存檔重新開始</button></div>';
+  return h;
+}
+
+/* ========================= 通用確認框 ========================= */
+let cfCb = null;
+function confirmBox(title, body, cb){
+  $('#cfTitle').textContent = title;
+  $('#cfBody').innerHTML = body;
+  cfCb = cb;
+  $('#confirmOv').classList.remove('hidden');
+}
+$('#cfYes').onclick = () => { $('#confirmOv').classList.add('hidden'); if (cfCb) cfCb(); };
+$('#cfNo').onclick  = () => $('#confirmOv').classList.add('hidden');
+
+/* ========================= 事件(委派) ========================= */
+$('#tabBody').addEventListener('click', ev => {
+  const btn = ev.target.closest('[data-act]');
+  if (!btn || btn.disabled) return;
+  const [act, a, b] = btn.dataset.act.split(':');
+
+  if (act === 'build'){
+    const cost = buildCost(a);
+    if (!canAfford(cost)) return;
+    pay(cost); S.b[a]++;
+    log(BUILD[a].icon + ' ' + BUILD[a].name + (S.b[a] === 1 ? ' 建造完成!' : ' 升到 Lv.' + S.b[a]));
+    if (a === 'castle' && S.b.castle === PRESTIGE_CASTLE) log('👑 城堡 Lv.' + PRESTIGE_CASTLE + '!「傳承」分頁已可讓位');
+    save();
+  }
+  if (act === 'work'){
+    if (b === 'max'){ const room = Math.min(jobSlots(a) - S.w[a], idlePop()); S.w[a] += room; }
+    else {
+      const d = parseInt(b);
+      if (d > 0 && (idlePop() < 1 || S.w[a] >= jobSlots(a))) return;
+      S.w[a] = Math.max(0, S.w[a] + d);
+    }
+  }
+  if (act === 'recruit'){
+    const d = UNITS[a]; let n = parseInt(b);
+    while (n-- > 0){
+      if (!canAfford(d.cost) || armyCount() >= armyCap() || idlePop() < 1) break;
+      pay(d.cost); S.army[a]++; S.pop -= 1;
+    }
+    save();
+  }
+  if (act === 'lair') startBattle('lair', a);
+  if (act === 'nbr'){
+    const N = NBRS.find(x => x.id === a);
+    confirmBox('⚔️ 向 ' + N.name + ' 開戰?', '劫掠後與該國貿易中斷 10 分鐘(勝敗皆然),且每次得手後其軍力會增強。', () => startBattle('nbr', a));
+  }
+  if (act === 'legacy'){
+    const d = LEGACY[a], cost = d.cost(S.legacyUp[a]);
+    if (S.legacy >= cost && S.legacyUp[a] < d.max){ S.legacy -= cost; S.legacyUp[a]++; save(); }
+  }
+  if (act === 'prestige'){
+    confirmBox('👑 讓位傳承', '重置所有建築、資源、軍隊與討伐進度,<b>寶物與遺產保留</b>。<br>本次可得 ✨<b>' + legacyGain() + '</b> 點遺產。確定讓位?', doPrestige);
+  }
+  if (act === 'showExport'){
+    $('#codeArea').innerHTML = '<div class="hint">全選複製這串存檔碼:</div><textarea readonly onclick="this.select()">' + exportCode() + '</textarea>';
+  }
+  if (act === 'showImport'){
+    $('#codeArea').innerHTML = '<div class="hint">貼上另一台裝置的存檔碼(會覆蓋目前進度):</div><textarea id="impBox"></textarea>' +
+      '<div class="boxBtns"><button class="btn" data-act="doImport">匯入</button></div>';
+  }
+  if (act === 'doImport'){
+    const r = importCode($('#impBox') ? $('#impBox').value : '');
+    log((r.ok ? '✅ ' : '⚠️ ') + r.msg);
+  }
+  if (act === 'wipe'){
+    confirmBox('🗑️ 刪除存檔', '所有進度(包括傳承與寶物)都會消失,確定重新開始?', () => {
+      localStorage.removeItem(SAVE_KEY);
+      S = freshState(); save(); renderAll(true);
+      log('🌱 新的王國誕生了');
+    });
+  }
+  /* 存檔碼相關操作不重繪面板,避免把輸入框洗掉 */
+  if (act === 'showExport' || act === 'showImport' || act === 'doImport') return;
+  renderTab();
+});
+
+$('#taxBtn').onclick = () => {
+  const v = taxValue();
+  S.res.gold += v; S.stats.goldEarned += v;
+  const btn = $('#taxBtn');
+  btn.style.transform = 'scale(.94)';
+  setTimeout(() => btn.style.transform = '', 80);
+};
+
+/* ========================= 頂部資源列 ========================= */
+function renderTop(){
+  const set = (id, icon, val, sub) => {
+    $(id).innerHTML = icon + ' ' + val + (sub ? ' <small>' + sub + '</small>' : '');
+  };
+  set('#r_gold', '💰', fmt(S.res.gold), R.gold > 0.05 ? fmtRate(R.gold) : '');
+  set('#r_food', '🌾', fmt(S.res.food), R.starving ? '<span class="warn">缺糧!</span>' : fmtRate(R.food - R.eat));
+  set('#r_wood', '🪵', fmt(S.res.wood), R.wood > 0.05 ? fmtRate(R.wood) : '');
+  set('#r_ore',  '⛏️', fmt(S.res.ore),  R.ore  > 0.05 ? fmtRate(R.ore)  : '');
+  set('#r_mana', '✨', fmt(S.res.mana), R.mana > 0.05 ? fmtRate(R.mana) : '');
+  set('#r_pop',  '👥', Math.floor(S.pop) + '/' + popCap(), '閒' + idlePop());
+  $('#taxBtn').textContent = '👑 徵稅 +' + fmt(taxValue());
+}
+
+function renderAll(force){
+  renderTop();
+  renderTab();
+}
+
+/* ========================= 城市地圖繪製 ========================= */
+const cv = $('#map'), cx = cv.getContext('2d');
+const POS = {
+  castle:   { x:480, y:250 }, house:  { x:330, y:335 }, farm:    { x:640, y:385 },
+  lumber:   { x:225, y:150 }, mine:   { x:105, y:255 }, magetower:{ x:610, y:140 },
+  market:   { x:690, y:275 }, smithy: { x:395, y:400 }, barracks:{ x:245, y:320 },
+};
+const ROAD_Y = 288;
+let villagers = [];   // 裝飾用小人
+let sparkles = [];    // 法師塔魔法粒子
+
+function drawMap(t){
+  const W = cv.width, H = cv.height;
+  /* 地面 */
+  const g = cx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#17281b'); g.addColorStop(1, '#1d3020');
+  cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+
+  /* 星空邊緣(夜晚魔法氛圍) */
+  cx.fillStyle = 'rgba(255,255,255,.5)';
+  for (let i = 0; i < 24; i++){
+    const sx = (i*173 % W), sy = (i*97 % 60);
+    const tw = 0.3 + 0.4*Math.sin(t/700 + i);
+    cx.globalAlpha = tw; cx.fillRect(sx, sy, 2, 2);
+  }
+  cx.globalAlpha = 1;
+  /* 月亮 */
+  cx.font = '28px serif'; cx.fillText('🌕', W - 70, 44);
+
+  /* 山脈(左上,礦區) */
+  cx.fillStyle = '#3d4356';
+  for (const [mx, mw, mh] of [[20,130,95],[95,150,120],[190,110,80]]){
+    cx.beginPath();
+    cx.moveTo(mx, 210); cx.lineTo(mx + mw/2, 210 - mh); cx.lineTo(mx + mw, 210);
+    cx.closePath(); cx.fill();
+  }
+  cx.fillStyle = '#e8e6df';
+  for (const [mx, mw, mh] of [[95,150,120]]){
+    cx.beginPath();
+    cx.moveTo(mx + mw/2 - 16, 210 - mh + 22); cx.lineTo(mx + mw/2, 210 - mh); cx.lineTo(mx + mw/2 + 16, 210 - mh + 22);
+    cx.closePath(); cx.fill();
+  }
+
+  /* 森林(上方,伐木區) */
+  cx.font = '22px serif';
+  for (let i = 0; i < 14; i++){
+    const fx = 180 + (i*67 % 260), fy = 60 + (i*41 % 80);
+    cx.fillText('🌲', fx, fy);
+  }
+
+  /* 商路 */
+  cx.strokeStyle = '#5a4a32'; cx.lineWidth = 18; cx.lineCap = 'round';
+  cx.beginPath(); cx.moveTo(505, 270); cx.quadraticCurveTo(700, ROAD_Y + 6, W + 10, ROAD_Y); cx.stroke();
+  cx.strokeStyle = '#7a6845'; cx.lineWidth = 2; cx.setLineDash([10, 12]);
+  cx.beginPath(); cx.moveTo(505, 270); cx.quadraticCurveTo(700, ROAD_Y + 6, W + 10, ROAD_Y); cx.stroke();
+  cx.setLineDash([]);
+  cx.fillStyle = '#9aa3bf'; cx.font = '13px serif';
+  cx.fillText('→ 鄰國', W - 74, ROAD_Y - 16);
+
+  /* 商隊(市場蓋了、鄰國和平時) */
+  if (S.b.market >= 1){
+    let lane = 0;
+    for (const N of NBRS){
+      if (!atPeace(N.id)) continue;
+      const ph = ((t/60 + lane*33) % 100) / 100;                 // 0→1 往返
+      const back = ph > 0.5;
+      const k = back ? (1 - ph)*2 : ph*2;
+      const cxp = 520 + k*(W - 540);
+      const cyp = ROAD_Y - 6 + lane*9 - 8;
+      cx.font = '17px serif';
+      cx.save();
+      if (back){ cx.translate(cxp + 8, 0); cx.scale(-1, 1); cx.fillText('🐫', 0, cyp); }
+      else cx.fillText('🐫', cxp, cyp);
+      cx.restore();
+      lane++;
+    }
+  }
+
+  /* 建築 */
+  for (const key of BUILD_ORDER){
+    const lv = S.b[key];
+    if (lv < 1) continue;
+    const p = POS[key], d = BUILD[key];
+    /* 陰影 */
+    cx.fillStyle = 'rgba(0,0,0,.3)';
+    cx.beginPath(); cx.ellipse(p.x, p.y + 8, 22 + Math.min(lv,10)*1.5, 7, 0, 0, 7); cx.fill();
+    if (key === 'house'){
+      /* 民房:等級越高房子越多 */
+      const n = Math.min(2 + Math.floor(lv/2), 12);
+      cx.font = '20px serif';
+      for (let i = 0; i < n; i++){
+        cx.fillText('🏠', p.x - 40 + (i%4)*26, p.y - Math.floor(i/4)*24);
+      }
+    } else {
+      const size = 26 + Math.min(lv, 12)*1.6;
+      cx.font = size + 'px serif';
+      cx.fillText(d.icon, p.x - size/2, p.y);
+      if (key === 'castle'){
+        /* 城堡旗幟隨風飄 */
+        const fx = p.x + size/2 - 6, fy = p.y - size + 2;
+        cx.strokeStyle = '#d4b26a'; cx.lineWidth = 2;
+        cx.beginPath(); cx.moveTo(fx, fy); cx.lineTo(fx, fy - 18); cx.stroke();
+        cx.fillStyle = '#d4b26a';
+        const wav = Math.sin(t/300)*3;
+        cx.beginPath(); cx.moveTo(fx, fy - 18); cx.lineTo(fx + 16, fy - 14 + wav); cx.lineTo(fx, fy - 10); cx.closePath(); cx.fill();
+      }
+    }
+    /* 名稱 + 等級 */
+    cx.fillStyle = '#d4b26a'; cx.font = '12px serif'; cx.textAlign = 'center';
+    cx.fillText(d.name + ' Lv.' + lv, p.x, p.y + 22);
+    cx.textAlign = 'left';
+  }
+
+  /* 法師塔魔法粒子 */
+  if (S.b.magetower >= 1){
+    if (sparkles.length < 8 && Math.random() < 0.15){
+      sparkles.push({ x: POS.magetower.x + rnd(-14, 14), y: POS.magetower.y - 20, vy: rnd(0.3, 0.8), life: 1 });
+    }
+    cx.font = '10px serif';
+    sparkles = sparkles.filter(sp => {
+      sp.y -= sp.vy; sp.life -= 0.012;
+      if (sp.life <= 0) return false;
+      cx.globalAlpha = sp.life;
+      cx.fillText('✦', sp.x, sp.y);
+      return true;
+    });
+    cx.globalAlpha = 1;
+  }
+
+  /* 領民小人四處走動 */
+  const want = Math.min(12, Math.floor(S.pop));
+  while (villagers.length < want){
+    villagers.push({ x: rnd(200, 700), y: rnd(300, 460), tx: 0, ty: 0, wait: 0 });
+  }
+  villagers.length = want;
+  cx.fillStyle = '#c8b892';
+  for (const v of villagers){
+    if (v.wait > 0){ v.wait--; }
+    else if (!v.tx || (Math.abs(v.x - v.tx) < 3 && Math.abs(v.y - v.ty) < 3)){
+      const keys = BUILD_ORDER.filter(k => S.b[k] >= 1);
+      const p = POS[keys[Math.floor(Math.random()*keys.length)]] || POS.castle;
+      v.tx = p.x + rnd(-40, 40); v.ty = p.y + rnd(6, 34);
+      v.wait = Math.floor(rnd(30, 180));
+    } else {
+      const dx = v.tx - v.x, dy = v.ty - v.y, dl = Math.hypot(dx, dy) || 1;
+      v.x += dx/dl*0.5; v.y += dy/dl*0.5;
+    }
+    cx.beginPath(); cx.arc(v.x, v.y, 2.4, 0, 7); cx.fill();
+  }
+
+  requestAnimationFrame(drawMap);
+}
+
+/* ========================= 除錯(console 用) ========================= */
+window.MK = {
+  get S(){ return S; },
+  give(n){ n = n || 1e5; for (const r in S.res) S.res[r] += n; S.stats.goldEarned += n; },
+  castle(lv){ S.b.castle = lv; },
+  offlineTest(hr){ S.lastSeen = now() - hr*3600*1000; save(); location.reload(); },
+};
+
+/* ========================= 啟動 ========================= */
+function init(){
+  S = load();
+  const isNew = !S;
+  if (isNew) S = freshState();
+  offlineSettle();
+  R = prodRates();
+  renderAll(true);
+  if (isNew){
+    log('⚜️ 歡迎,陛下!先點「👑 徵稅」存錢,蓋出 🌾農田 與 🏠民房');
+  } else {
+    log('⚜️ 歡迎回來,陛下');
+  }
+  setInterval(tick, 100);
+  setInterval(renderTop, 250);
+  setInterval(() => { if (curTab !== 'misc') renderTab(); }, 600);   // 設定頁不自動重繪,保留輸入框
+  setInterval(save, 30000);
+  window.addEventListener('beforeunload', save);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+  requestAnimationFrame(drawMap);
+}
+init();
+</script>
+</body>
+</html>
