@@ -358,9 +358,11 @@ function freshState(keep){
 let S = null;
 
 /* ========================= 存讀檔 ========================= */
+let lastSaveAt = 0;                 // 上次成功存檔的時間戳(牆上時鐘)
 function save(){
   S.lastSeen = now();
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch(e){}
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); lastSaveAt = now(); return true; }
+  catch(e){ return false; }
 }
 function load(){
   try {
@@ -872,9 +874,18 @@ function viewLegacy(){
   return h;
 }
 
+function savedAgoText(){
+  if (!lastSaveAt) return '本次開啟後尚未存檔';
+  const t = new Date(lastSaveAt);
+  const hh = String(t.getHours()).padStart(2,'0'), mm = String(t.getMinutes()).padStart(2,'0'), ss = String(t.getSeconds()).padStart(2,'0');
+  const ago = Math.floor((now() - lastSaveAt)/1000);
+  return '上次存檔:' + hh + ':' + mm + ':' + ss + '(' + fmtTime(ago) + '前)';
+}
 function viewMisc(){
   let h = '<div class="sect">💾 存檔</div>' +
-    '<div class="hint">遊戲每 30 秒自動存檔在這台裝置。要換裝置玩,複製存檔碼過去貼上即可。</div>' +
+    '<div class="hint">遊戲每 30 秒自動存檔在這台裝置,關閉分頁時也會存。按下方按鈕可隨時手動存檔。</div>' +
+    '<div class="boxBtns"><button class="btn" data-act="manualSave">💾 立即存檔</button></div>' +
+    '<div class="hint" id="saveStatus">' + savedAgoText() + '</div>' +
     '<div class="boxBtns"><button class="btn" data-act="showExport">📤 匯出存檔碼</button>' +
     '<button class="btn" data-act="showImport">📥 匯入存檔碼</button></div>' +
     '<div id="codeArea"></div>' +
@@ -938,6 +949,13 @@ $('#tabBody').addEventListener('click', ev => {
   if (act === 'prestige'){
     confirmBox('👑 讓位傳承', '重置所有建築、資源、軍隊與討伐進度,<b>寶物與遺產保留</b>。<br>本次可得 ✨<b>' + legacyGain() + '</b> 點遺產。確定讓位?', doPrestige);
   }
+  if (act === 'manualSave'){
+    const ok = save();
+    log(ok ? '💾 已手動存檔' : '⚠️ 存檔失敗(瀏覽器可能封鎖了儲存)');
+    const st = $('#saveStatus');
+    if (st){ st.innerHTML = ok ? '✅ ' + savedAgoText() : '⚠️ 存檔失敗'; st.classList.add('costOk'); setTimeout(() => st.classList.remove('costOk'), 1200); }
+    return;
+  }
   if (act === 'showExport'){
     $('#codeArea').innerHTML = '<div class="hint">全選複製這串存檔碼:</div><textarea readonly onclick="this.select()">' + exportCode() + '</textarea>';
   }
@@ -956,8 +974,8 @@ $('#tabBody').addEventListener('click', ev => {
       log('🌱 新的王國誕生了');
     });
   }
-  /* 存檔碼相關操作不重繪面板,避免把輸入框洗掉 */
-  if (act === 'showExport' || act === 'showImport' || act === 'doImport') return;
+  /* 這些操作不重繪面板,避免把輸入框/存檔狀態洗掉 */
+  if (act === 'showExport' || act === 'showImport' || act === 'doImport' || act === 'manualSave') return;
   renderTab();
 });
 
@@ -1165,6 +1183,9 @@ function init(){
   setInterval(tick, 100);
   setInterval(renderTop, 250);
   setInterval(() => { if (curTab !== 'misc') renderTab(); }, 600);   // 設定頁不自動重繪,保留輸入框
+  setInterval(() => {                                                // 但存檔狀態的「X前」要保持新鮮
+    if (curTab === 'misc'){ const st = $('#saveStatus'); if (st && !st.classList.contains('costOk')) st.innerHTML = savedAgoText(); }
+  }, 1000);
   setInterval(save, 30000);
   window.addEventListener('beforeunload', save);
   document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
